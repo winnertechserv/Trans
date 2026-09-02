@@ -25,6 +25,17 @@ def _positions(c, market=None):
     return {r["ticker"]: Position(r["ticker"], r["quantity"], r["price"])
             for r in c.execute(q, (br,) if br else ())}
 
+def company_names(c):
+    """{ticker: company name}. Stored as a plain `name` metric on fundamentals, because
+    that table already carries text values and is refreshed by the same sync — a separate
+    table would need its own prompt, its own ingest handler and its own staleness. Empty
+    until a fundamentals sync has run, and the UI falls back to the ticker."""
+    return {r["ticker"]: r["text_value"] for r in c.execute(
+        "SELECT ticker,text_value FROM fundamentals WHERE metric='name'"
+        " AND text_value IS NOT NULL AND asof=(SELECT MAX(asof) FROM fundamentals f2"
+        "  WHERE f2.ticker=fundamentals.ticker AND f2.metric='name')")}
+
+
 def _no_history_note(asset, has_txns):
     if not has_txns:
         return "no transaction history — import a tradebook for XIRR"
@@ -86,8 +97,11 @@ def results(c, as_of=None, market=None):
         ov_extra_inv = inv; ov_extra_val = val
         overall_extra[0] += inv; overall_extra[1] += val
 
+    nm = company_names(c)
     tot = sum(r["market_value"] for r in rows) or 1
-    for r in rows: r["weight"] = r["market_value"] / tot
+    for r in rows:
+        r["weight"] = r["market_value"] / tot
+        r["name"] = nm.get(r["ticker"])
     inv_t = overall.invested + overall_extra[0]
     val_t = overall.market_value + overall_extra[1]
     net_t = overall.proceeds + overall.dividends + val_t - inv_t
@@ -194,6 +208,7 @@ def contributions(c, market=None):
 
 def fundamentals(c, ticker):
     sec = S.sector_of(ticker)
+    name = company_names(c).get(ticker)
     wanted = S.metrics_for(ticker)
     latest = {}
     for r in c.execute("SELECT metric,value,text_value,asof FROM fundamentals WHERE ticker=?"
@@ -217,7 +232,8 @@ def fundamentals(c, ticker):
                     "text": v["text"] if v else None,
                     "asof": v["asof"] if v else None,
                     "missing": v is None})
-    return {"ticker": ticker, "sector": sec, "sector_label": S.label(sec), "metrics": out,
+    return {"ticker": ticker, "name": name, "sector": sec, "sector_label": S.label(sec),
+            "metrics": out,
             "coverage": sum(1 for m in out if not m["missing"]) / max(len(out), 1)}
 
 def costs(c):

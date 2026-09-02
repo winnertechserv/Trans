@@ -97,6 +97,9 @@ def fundamentals_prompt(c, tickers=None, market=None):
 
 Pull with (all free, no Anthropic API):
   - get_equity_fundamentals(symbols=[...])  -> pe, pb, market_cap, dividend_yield, high_52, low_52
+    Also record the company name it returns, as
+    {{"ticker":"MSFT","metric":"name","text_value":"Microsoft Corporation"}} — text_value,
+    not value. It is shown beside the ticker in Allocation and Holdings.
   - get_financials(symbols=[...], period="quarterly", limit=8)
         -> revenue, net_income, gross_margin, net_margin, revenue_growth (YoY from the series)
   - get_sec_filing_index + get_sec_filing_facts for balance-sheet concepts where needed:
@@ -147,6 +150,7 @@ TradingAgents interpreter, which already has yfinance installed:
 For each symbol read `Ticker(sym).info` and map these fields (yfinance field on the
 left, Trans metric name on the right):
 
+    longName            => name             ** text, not a number **
     trailingPE          => pe
     priceToBook         => pb
     marketCap           => market_cap
@@ -160,6 +164,10 @@ left, Trans metric name on the right):
     totalRevenue        => revenue
     dividendYield       => dividend_yield   ** DIVIDE BY 100 **
     debtToEquity        => debt_to_equity   ** DIVIDE BY 100 **
+
+Send `name` as {"ticker":"DIXON","metric":"name","text_value":"Dixon Technologies (India) Ltd"}
+— text_value, not value. It is what the app shows beside the ticker in Allocation and
+Holdings, so a ticker with no name there simply has not been synced yet.
 
 Both marked fields are reported by yfinance as PERCENTAGES, not decimals. Verified:
 IOC.NS returns dividendYield 6.04 against an implied 6.02% from dividendRate/price, and

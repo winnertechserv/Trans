@@ -28,6 +28,13 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
 tbody tr:hover{background:var(--chip)}
 .pos{color:var(--pos)}.neg{color:var(--neg)}.mut{color:var(--mut)}
+.ih{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;
+  border:1px solid var(--mut);color:var(--mut);border-radius:50%;font-size:9px;
+  font-style:italic;font-weight:600;cursor:help;vertical-align:middle;margin-left:4px;
+  text-transform:none;letter-spacing:0}
+.ih:hover{border-color:var(--acc);color:var(--acc)}
+.cname{font-size:11px;color:var(--mut);font-weight:400;margin-top:1px;max-width:200px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
   font-size:10px;cursor:help}
 .wrap{overflow-x:auto}
@@ -257,7 +264,8 @@ let allocQ='', allocSec='', allocKey='market_value', allocDir=-1;
 function allocRows(open){
   const q=allocQ.trim().toUpperCase();
   return open.filter(p=>(!allocSec||p.sector_label===allocSec)
-      && (!q||p.ticker.toUpperCase().includes(q)||(p.sector_label||'').toUpperCase().includes(q)))
+      && (!q||p.ticker.toUpperCase().includes(q)||(p.name||'').toUpperCase().includes(q)
+             ||(p.sector_label||'').toUpperCase().includes(q)))
     .sort((a,b)=>{const A=a[allocKey],B=b[allocKey];
       if(A==null)return 1; if(B==null)return -1;
       return (typeof A==='string'?A.localeCompare(B):(A>B?1:A<B?-1:0))*allocDir;});
@@ -270,9 +278,10 @@ function allocTable(open){
   const cols=[['ticker','Ticker'],['sector_label','Category'],['market_value','Value'],
               ['weight','Weight'],['xirr','XIRR']];
   return `<div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
-      `<th data-ak="${k}">${l}${allocKey===k?(allocDir<0?' ▾':' ▴'):''}</th>`).join('')}<th></th></tr></thead>
+      `<th data-ak="${k}">${l}${allocKey===k?(allocDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}<th></th></tr></thead>
     <tbody>${rows.map(p=>`<tr>
-     <td><b>${p.ticker}</b></td><td class="mut">${p.sector_label}</td>
+     <td><b>${p.ticker}</b>${p.name?`<div class="cname">${p.name}</div>`:''}</td>
+     <td class="mut">${p.sector_label}</td>
      <td>${usd(p.market_value)}</td><td>${pct(p.weight,1)}</td>
      <td class="${sign(p.xirr)}">${pct(p.xirr,1)}</td>
      <td style="width:26%"><div class="bar"><i style="width:${p.market_value/mx*100}%"></i></div></td>
@@ -328,6 +337,49 @@ function movers(r){
     +` A re-entered position's rate is set mostly by its first episode.</p>`;
 }
 
+// What every column means and how it is worked out. Kept in one place because the same
+// column appears in Allocation and Holdings and the two must not drift apart, and because
+// several of these are exactly where the numbers mislead if you assume the obvious.
+const INFO={
+ ticker:"Broker symbol, normalised. NSE series codes are stripped (MTARTECH-BE becomes "
+   +"MTARTECH) and renamed companies are folded onto the current symbol (GET&D into "
+   +"GVT&D) so trades and holdings line up.",
+ name:"Company name, from the last fundamentals sync. Blank means it has not been synced "
+   +"yet, not that the holding is unknown.",
+ sector_label:"Category used to decide which fundamentals matter — P/B leads for banks, "
+   +"P/E is omitted for REITs and MLPs. Set by hand in config; 'Unclassified' means "
+   +"nobody has mapped it yet.",
+ xirr:"Money-weighted annual return. Solves for the rate that makes every buy (cash out), "
+   +"sell (cash in), dividend and today's holding value discount back to zero, on a "
+   +"365-day basis. It is ANNUALISED, so a short round-trip explodes: +57% held ten days "
+   +"reads as millions of percent. It also weights by time exponentially, so for a "
+   +"position you exited and re-entered the rate is set mostly by the first episode.",
+ simple_return:"Net P/L divided by Invested. Not annualised and not time-weighted — just "
+   +"what came back per unit spent. Read it next to XIRR: when the two disagree wildly, "
+   +"the position was traded rather than held.",
+ weight:"This holding's value as a share of everything currently held in this market. "
+   +"Markets are never blended, so weights sum to 100% within India or within the US.",
+ invested:"Every unit of currency ever spent buying, summed over all time. NOT reduced by "
+   +"sales — that is what Sold is for.",
+ proceeds:"Cash received from sales, over all time. Money already out of the market.",
+ market_value:"Shares currently held x the broker's latest price. Only what is still "
+   +"owned, which is why it can sit far below Invested once you have sold.",
+ dividends:"Dividends recorded. On the US side these are reconstructed from DRIP "
+   +"reinvestment orders, so cash dividends taken as cash are invisible. On the India "
+   +"side this is 0 because Zerodha's tradebook carries no dividend rows at all.",
+ net_profit:"Sold + Dividends + Value - Invested. The whole-life result in currency, "
+   +"including positions you have closed.",
+ days_held:"Days actually owning shares, not first-to-last span — a position you exited "
+   +"and re-entered does not count the gap. A '~' prefix means the derived share count is "
+   +"unreliable (a split left pre-split quantities in the order history) so the elapsed "
+   +"span is shown instead.",
+ n_flows:"How many cash flows fed the XIRR: every buy, sell and dividend, plus today's "
+   +"holding value as a final flow. Two or three flows make for a fragile rate.",
+};
+function ih(k){
+  const t=INFO[k]; return t?` <span class="ih" title="${t.replace(/"/g,'&quot;')}">i</span>`:'';
+}
+
 let sortKey='market_value',sortDir=-1;
 function holdings(){
   const r=[...STATE.ov.results].sort((a,b)=>{
@@ -343,9 +395,10 @@ function holdings(){
     ['days_held','Held'],['n_flows','Flows']];
   $('#main').innerHTML=`<div class="card"><h2>All holdings — click a header to sort</h2>
    <div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
-    `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}</th>`).join('')}</tr></thead>
+    `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
-     <td><b>${x.ticker}</b>${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
+     <td><b>${x.ticker}</b>${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}
+         ${x.name?`<div class="cname">${x.name}</div>`:''}</td>
      <td class="mut">${x.sector_label}</td>
      <td class="${sign(x.xirr)}">${pct(x.xirr,1)}</td>
      <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
@@ -407,10 +460,50 @@ async function divs(){
     </tbody></table></div></div>`;
 }
 
+// The monthly series is the raw material; quarters and years are rolled up in the
+// browser rather than round-tripping, because /api/contributions already returns every
+// month there has ever been and the aggregation is a group-by.
+let contribPeriod='month', contribYears=2;
+function contribBucket(m,p){
+  const y=+m.slice(0,4), mo=+m.slice(5,7);
+  return p==='year'?String(y):p==='quarter'?`${y}-Q${Math.ceil(mo/3)}`:m;
+}
+function contribSeries(ser){
+  let cut='0000-00';
+  if(contribYears!=='all'){const d=new Date(); d.setFullYear(d.getFullYear()-contribYears);
+    cut=d.toISOString().slice(0,7);}
+  const agg=new Map();
+  for(const x of ser){ if(x.month<cut) continue;
+    const k=contribBucket(x.month,contribPeriod); agg.set(k,(agg.get(k)||0)+x.amount); }
+  return [...agg].map(([label,amount])=>({label,amount})).sort((a,b)=>a.label<b.label?-1:1);
+}
+function contribCard(cn){
+  const cs=contribSeries(cn.series);
+  const cm=Math.max(...cs.map(x=>x.amount),0)||1;
+  const per=[['month','Monthly'],['quarter','Quarterly'],['year','Yearly']];
+  const spans=[[1,'1y'],[3,'3y'],[5,'5y'],[10,'10y'],['all','All']];
+  return `<h2>New capital deployed</h2>
+   <div class="row">
+    <span class="lbl">Group by</span>
+    <span class="seg" id="cper">${per.map(([k,l])=>
+      `<button data-v="${k}" aria-pressed="${k===contribPeriod}">${l}</button>`).join('')}</span>
+    <span class="lbl" style="margin-left:8px">Span</span>
+    <span class="seg" id="cspan">${spans.map(([k,l])=>
+      `<button data-v="${k}" aria-pressed="${String(k)===String(contribYears)}">${l}</button>`).join('')}</span>
+   </div>
+   ${cs.length?`<div class="wrap"><table><thead><tr><th>Period</th><th></th>
+     <th>Bought</th></tr></thead><tbody>${cs.map(x=>`<tr><td>${x.label}</td>
+     <td style="width:60%"><div class="bar"><i style="width:${x.amount/cm*100}%"></i></div></td>
+     <td>${usd(x.amount)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="mut" style="font-size:11px;margin-top:8px">${cs.length} periods ·
+     ${usd(cs.reduce((s,x)=>s+x.amount,0))} bought in this window ·
+     trailing 12 months <b>${usd(cn.trailing_12m)}</b>. Buys only — sales are not netted off.</p>`
+    :`<p class="mut">No buys in this window.</p>`}`;
+}
+
 async function analysis(){
   const [a,cn]=await Promise.all([get('/api/allocation?market='+STATE.market),get('/api/contributions?market='+STATE.market)]);
   const ms=Math.max(...a.by_sector.map(s=>s.value));
-  const cs=cn.series.slice(-24),cm=Math.max(...cs.map(x=>x.amount));
   $('#main').innerHTML=`
    <div class="grid">
     <div class="card"><h2>Sector exposure</h2><table><tbody>
@@ -426,11 +519,14 @@ async function analysis(){
       ${usd(a.tail.value)} combined (${pct(a.tail.weight,1)} of portfolio).<br>
       ${a.tail.tickers.map(t=>`<span class="tick">${t}</span>`).join('')}</p></div>
    </div>
-   <div class="card"><h2>New capital deployed per month (last 24)</h2>
-    <table><tbody>${cs.map(x=>`<tr><td>${x.month}</td>
-     <td style="width:60%"><div class="bar"><i style="width:${x.amount/cm*100}%"></i></div></td>
-     <td>${usd(x.amount)}</td></tr>`).join('')}</tbody></table>
-    <p class="mut">Trailing 12 months: <b>${usd(cn.trailing_12m)}</b></p></div>`;
+   <div class="card" id="ccard">${contribCard(cn)}</div>`;
+  const wire=()=>{
+    $('#cper').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
+      contribPeriod=v; $('#ccard').innerHTML=contribCard(cn); wire();};
+    $('#cspan').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
+      contribYears=v==='all'?'all':+v; $('#ccard').innerHTML=contribCard(cn); wire();};
+  };
+  wire();
 }
 
 async function fund(){
@@ -440,26 +536,60 @@ async function fund(){
     <p class="mut">Run a sync first, then <b>sync fundamentals</b> in Claude Code.</p></div>`; return; }
   const tick=STATE.fundTicker||eligible[0].ticker;
   const opts=eligible.map(r=>r.ticker).sort();
-  const f=await get('/api/fundamentals/'+tick);
-  const fmtv=(m)=>{if(m.value==null)return `<span class="miss">not loaded</span>`;
+  // Up to three side by side. Sector decides the metric set, so comparing across sectors
+  // gives a sparse table on purpose — a bank has no P/E row to line up against a chipmaker,
+  // and filling one in would be worse than leaving the gap visible.
+  const picks=[tick,STATE.fundT2||'',STATE.fundT3||''].filter(Boolean);
+  const fs=await Promise.all(picks.map(t=>get('/api/fundamentals/'+t)));
+  const fmtv=(m)=>{if(!m||m.value==null)return `<span class="miss">not loaded</span>`;
     if(m.fmt==='%')return pct(m.value,1); if(m.fmt==='$')return usd(m.value);
     if(m.fmt==='x')return fmt(m.value,2)+'×'; if(m.fmt==='d')return fmt(m.value,0)+' d';
     return fmt(m.value,2);};
+  const sel=(id,val)=>`<select id="${id}">${(id==='tsel'?'':'<option value="">— none —</option>')
+    +opts.map(t=>`<option ${t===val?'selected':''}>${t}</option>`).join('')}</select>`;
+  const cmp=fs.length>1;
+  // union of metrics, in the order the first ticker lists them, then any extras
+  const keys=[]; for(const f of fs) for(const m of f.metrics) if(!keys.includes(m.metric)) keys.push(m.metric);
+  const label={}; for(const f of fs) for(const m of f.metrics) label[m.metric]=m.label;
+  const dir={};   for(const f of fs) for(const m of f.metrics) dir[m.metric]=m.higher_better;
+  const at=(f,k)=>f.metrics.find(m=>m.metric===k);
+  // in compare mode mark the best value per row, but only where every ticker has one and
+  // they actually share the metric — "best P/E" across a bank and an ETF is meaningless
+  const best=(k)=>{ if(!cmp)return null;
+    const vs=fs.map(f=>at(f,k)).map(m=>m&&m.value!=null?m.value:null);
+    if(vs.some(v=>v==null))return null;
+    const t=dir[k]?Math.max(...vs):Math.min(...vs);
+    return vs.every(v=>v===vs[0])?null:vs.indexOf(t); };
+
   $('#main').innerHTML=`<div class="card">
-   <h2>Fundamentals <select id="tsel" style="float:right">${opts.map(t=>
-     `<option ${t===tick?'selected':''}>${t}</option>`).join('')}</select></h2>
-   <p class="mut"><b>${f.ticker}</b> — ${f.sector_label}. Metric set is chosen for this sector:
-    P/E is omitted where it misleads (REITs, MLPs), P/B leads for banks, and ETFs show only
-    fund-level figures. Coverage ${pct(f.coverage,0)}.</p>
-   <div class="wrap"><table><thead><tr><th>Metric</th><th>Value</th><th>As of</th>
-    <th>Direction</th></tr></thead><tbody>
-    ${f.metrics.map(m=>`<tr><td>${m.label}</td><td>${fmtv(m)}</td>
-     <td class="mut">${m.asof||'—'}</td>
-     <td class="mut">${m.higher_better?'higher better':'lower better'}</td></tr>`).join('')}
+   <h2>Fundamentals</h2>
+   <div class="row"><span class="lbl">Compare</span>
+     ${sel('tsel',tick)}${sel('tsel2',STATE.fundT2||'')}${sel('tsel3',STATE.fundT3||'')}
+     <span class="mut" style="font-size:11px">pick up to three</span></div>
+   ${cmp?'':`<p class="mut"><b>${fs[0].ticker}</b>${fs[0].name?` — ${fs[0].name}`:''} ·
+    ${fs[0].sector_label}. Metric set is chosen for this sector: P/E is omitted where it
+    misleads (REITs, MLPs), P/B leads for banks, and ETFs show only fund-level figures.
+    Coverage ${pct(fs[0].coverage,0)}.</p>`}
+   <div class="wrap"><table><thead><tr><th>Metric</th>
+     ${fs.map(f=>`<th>${f.ticker}${f.name?`<div class="cname">${f.name}</div>`:''}
+       <div class="cname">${f.sector_label} · ${pct(f.coverage,0)} covered</div></th>`).join('')}
+     <th>Direction</th></tr></thead><tbody>
+    ${keys.map(k=>{const b=best(k); return `<tr><td>${label[k]}</td>
+     ${fs.map((f,i)=>`<td${b===i?' class="pos"':''}>${fmtv(at(f,k))}</td>`).join('')}
+     <td class="mut">${dir[k]?'higher better':'lower better'}</td></tr>`;}).join('')}
    </tbody></table></div>
-   ${f.coverage<1?`<p class="mut" style="margin-top:12px">Missing metrics need a fundamentals
-     sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>`;
+   ${cmp?`<p class="mut" style="font-size:11px;margin-top:8px">Green marks the better
+     figure, and only where every ticker has one — comparing a metric across sectors that
+     do not share it would be meaningless.</p>`:''}
+   ${fs.some(f=>f.coverage<1)?`<p class="mut" style="margin-top:12px">Missing metrics need a
+     fundamentals sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>
+   <div id="rep"></div>`;
   $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;go('fund',e.target.value);};
+  $('#tsel2').onchange=e=>{STATE.fundT2=e.target.value;fund();};
+  $('#tsel3').onchange=e=>{STATE.fundT3=e.target.value;fund();};
+  // The research report for this ticker, if one has been run. Only in single view — three
+  // reports side by side would not be readable.
+  if(!cmp && STATE.fundHideRep!==tick) showReport(tick,{scroll:false,tab:'fund'});
 }
 
 async function syncv(){
@@ -865,7 +995,10 @@ function dcaPanel(ctx,decTxt){
   </div>`;
 }
 
-async function showReport(t){
+// Also used from the Fundamentals tab, where the report is a secondary panel rather than
+// the whole point of the page: it must not yank the viewport, and Close must return to the
+// tab you were actually on.
+async function showReport(t,opt={}){
   const r=await get('/api/analysis/'+t);
   if(!r.sections||!r.sections.length){$('#rep').innerHTML='';return;}
   const dec=r.sections.find(s=>s.kind==='ta:decision');
@@ -916,8 +1049,13 @@ async function showReport(t){
          ></summary>
        <div class="md">${md(s.content)}</div></details>`).join('')}`).join('')}
   </div>`;
-  $('#closerep').onclick=()=>{STATE.openReport=null;$('#rep').innerHTML='';
-    history.pushState({tab:'research',ticker:null},'','/research');};
+  $('#closerep').onclick=()=>{
+    STATE.openReport=null; $('#rep').innerHTML='';
+    // On Fundamentals the report is a panel on a page that stays put, so Close just
+    // hides it — routing away would re-run fund() and reopen it. The flag is per ticker,
+    // so switching ticker brings the report back.
+    if(opt.tab==='fund') STATE.fundHideRep=t; else go('research',null);
+  };
   $('#rep').onclick=async e=>{
     const k=e.target.dataset&&e.target.dataset.copy;
     if(k){
@@ -949,7 +1087,7 @@ async function showReport(t){
       e.target.textContent='Copied'; setTimeout(()=>e.target.textContent='Copy whole report',1400);
     }
   };
-  $('#rep').scrollIntoView({behavior:'smooth',block:'start'});
+  if(opt.scroll!==false) $('#rep').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 boot();
