@@ -33,6 +33,7 @@ are safe. Re-running a full bootstrap adds 0 rows.
 | `sync.py`      | delta cursor + prompt generation |
 | `costs.py`     | token/cost ledger, pre-flight estimates |
 | `backup.py`    | VACUUM INTO snapshot, manifest, prune, restore |
+| `analysis.py`  | optional TradingAgents bridge (subprocess; never imports it) |
 | `config.py`    | config.json loader; no hardcoded account numbers |
 | `restore_cli.py` | interactive restore, never auto-picks |
 | `server.py`    | JSON API + static UI |
@@ -72,5 +73,7 @@ Weekly-ish, run the **Fundamentals** prompt to refresh company metrics.
 | POST | `/api/backup` | snapshot -> Drive folder, prune, log |
 | POST | `/api/restore` | restore `{file}` (refuses while serving) |
 | POST | `/api/costs/estimate` `/api/costs/log` | pre-flight estimate; ledger entry |
+| GET | `/api/analysis` `/api/analysis/<t>` `/api/analysis/status` | availability, stored report, job state |
+| POST | `/api/analysis/estimate` `/api/analysis/run` | cost range; start a background run (paid runs need consent) |
 
 See `../BACKUP.md` for why backups use `VACUUM INTO` rather than `cp`.

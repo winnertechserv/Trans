@@ -16,3 +16,8 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+
+# ---- optional analysis integration ----
+analysis/
+vendor/
+tools/__pycache__/

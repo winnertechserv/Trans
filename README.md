@@ -23,6 +23,7 @@ Data lives in a SQLite file you own. Claude Code is the only tool needed to oper
 | **Dividends** | lifetime total, by year, by ticker |
 | **Analysis** | sector exposure, concentration (top 1/3/5/10), the sub-1% tail, monthly contributions |
 | **Fundamentals** | sector-appropriate metrics per holding |
+| **Research** | optional TradingAgents reports per holding (see below) |
 | **Sync & cost** | sync prompts, backup and restore, token/cost ledger |
 
 ## How it works
@@ -230,6 +231,7 @@ Then say `sync` to catch up on anything after that snapshot. Full walkthrough in
 python3 app/backup.py snapshot|auto|list|restore <file>
 python3 app/ingest.py  inbox|bootstrap
 python3 app/classify_cli.py       # list unclassified holdings
+python3 app/analysis.py           # research availability + cost estimate
 python3 app/restore_cli.py        # same as ./run.sh --restore
 python3 scripts/check_clean.py    # refuse-to-commit-personal-data check
 python3 test_xirr.py              # 16 solver tests
@@ -248,6 +250,24 @@ Gitignored. Holds every personal value in the project.
 | `backup.max_age_days` | staleness threshold for automatic backups (default 7) |
 | `backup.keep_daily` / `keep_monthly` | retention (default 30 / 12) |
 | `port` | default 8787 |
+| `tradingagents` | optional research integration — see [SETUP-ANALYSIS.md](SETUP-ANALYSIS.md) |
+
+## Research (optional)
+
+Trans can run **[TradingAgents](https://github.com/TauricResearch/TradingAgents)** over a
+holding — five analysts, a bull/bear debate, a trader and a risk panel — and store the
+report in the Research tab.
+
+It is off by default and installs nothing on your behalf. TradingAgents has no license
+and needs 22 pip packages, so it is never bundled: you clone it yourself and Trans talks
+to it by subprocess, staying stdlib-only. Pick a backend — **local Ollama** (free,
+private, weaker) or the **Anthropic API** (paid, better, with a consent prompt and cost
+logging before every run).
+
+Output is third-party generated research, clearly attributed — **not a recommendation**,
+and not checked by Trans.
+
+Setup: **[SETUP-ANALYSIS.md](SETUP-ANALYSIS.md)**.
 
 ## Sector-aware fundamentals
 
@@ -318,6 +338,7 @@ leaking into committed code.
 | Backups succeed but Drive stays empty | Drive is paused, signed out, or out of quota — check the menu-bar icon |
 | Fundamentals mostly "not loaded" | run `sync fundamentals` |
 | Fundamentals metrics look generic | run `classify tickers` |
+| Research tab says it is unavailable | it names the missing piece — see [SETUP-ANALYSIS.md](SETUP-ANALYSIS.md) |
 
 ## Library
 

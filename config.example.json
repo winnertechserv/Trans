@@ -29,5 +29,25 @@
     "BTC": "crypto",
     "ETH": "crypto"
   },
-  "_ticker_sectors_note": "Map your holdings to a sector key. Valid keys are the keys of SECTOR_METRICS in app/sectors.py. Anything unmapped falls back to a generic metric set, so this is optional but improves the Fundamentals tab."
+  "_ticker_sectors_note": "Map your holdings to a sector key. Valid keys are the keys of SECTOR_METRICS in app/sectors.py. Anything unmapped falls back to a generic metric set, so this is optional but improves the Fundamentals tab.",
+  "tradingagents": {
+    "enabled": false,
+    "repo_path": "~/src/TradingAgents",
+    "venv_python": "~/src/TradingAgents/.venv/bin/python",
+    "backend": "ollama",
+    "max_debate_rounds": 1,
+    "max_risk_rounds": 1,
+    "results_dir": "analysis",
+    "ollama": {
+      "backend_url": "http://localhost:11434/v1",
+      "deep_think_llm": "qwen3:14b",
+      "quick_think_llm": "qwen3:8b"
+    },
+    "anthropic": {
+      "deep_think_llm": "claude-sonnet-5",
+      "quick_think_llm": "claude-haiku-4-5-20251001",
+      "require_consent": true,
+      "max_cost_usd": 2.0
+    }
+  }
 }

@@ -6,7 +6,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.dirname(HERE))
 import db as D, analytics as A, sync as SY, costs as C, sectors as S, ingest as I
-import backup as B, config as CFG
+import backup as B, config as CFG, analysis as AN
 
 STATIC = os.path.join(HERE, "static")
 
@@ -58,6 +58,15 @@ class H(BaseHTTPRequestHandler):
                 pr = SY.write_prompt_files(c)
                 return self._json({"kind": k, "prompt": pr.get(k, pr["daily"]),
                                    "cursor": SY.cursor(c), "inbox": SY.INBOX})
+            if p == "/api/analysis":
+                return self._json({"available": AN.available(),
+                                   "estimate": AN.estimate(),
+                                   "reports": AN.reports(),
+                                   "jobs": AN.status()})
+            if p == "/api/analysis/status":
+                return self._json(AN.status(q.get("job", [None])[0]))
+            if p.startswith("/api/analysis/"):
+                return self._json(AN.reports(p.rsplit("/", 1)[1].upper()))
             if p == "/api/backups":
                 return self._json(B.status())
             if p == "/api/sectors":
@@ -79,6 +88,12 @@ class H(BaseHTTPRequestHandler):
                 D.log_tokens(c, "sync_ingest", "local", note=f"{total} rows")
                 return self._json({"ok": True, "rows": total, "files": files,
                                    "cursor": SY.cursor(c)})
+            if u.path == "/api/analysis/estimate":
+                return self._json(AN.estimate(body.get("ticker")))
+            if u.path == "/api/analysis/run":
+                return self._json(AN.run(body.get("ticker"),
+                                         body.get("date"),
+                                         consented=bool(body.get("consented"))))
             if u.path == "/api/backup":
                 rec = B.snapshot(kind=body.get("kind", "manual"))
                 removed = B.prune()

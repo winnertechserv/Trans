@@ -75,7 +75,8 @@ const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/js
 let STATE={};
 
 const TABS=[['overview','Overview'],['holdings','Holdings'],['buys','Daily buys'],
- ['div','Dividends'],['analysis','Analysis'],['fund','Fundamentals'],['sync','Sync & cost']];
+ ['div','Dividends'],['analysis','Analysis'],['fund','Fundamentals'],
+ ['research','Research'],['sync','Sync & cost']];
 let tab='overview';
 $('#nav').innerHTML=TABS.map(([k,l])=>`<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
 $('#nav').onclick=e=>{const t=e.target.dataset.t; if(!t)return; tab=t;
@@ -92,7 +93,7 @@ async function boot(){
   ].map(([s,v])=>`<div class="kpi"><span>${s}</span><b>${v}</b></div>`).join('');
   render();
 }
-function render(){({overview,holdings,buys,div:divs,analysis,fund,sync:syncv}[tab])();}
+function render(){({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();}
 
 function overview(){
   const {overall:o,results:r,health:h}=STATE.ov;
@@ -348,6 +349,88 @@ async function syncv(){
       STATE.ov=await get('/api/overview'); syncv();}
   };
 }
+
+async function research(){
+  $('#main').innerHTML='<div class="card">loading…</div>';
+  const d=await get('/api/analysis');
+  const a=d.available, est=d.estimate;
+  const held=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto')
+    .sort((x,y)=>y.market_value-x.market_value).map(r=>r.ticker);
+  const tick=STATE.researchTicker||held[0];
+  const chip=a.paid
+    ? `<span class="chip">Anthropic API — billed</span>`
+    : `<span class="chip">Local (Ollama) — free</span>`;
+  const running=(d.jobs||[]).filter(j=>j.state==='running');
+  $('#main').innerHTML=`
+  <div class="card"><h2>Research ${chip}</h2>
+   <p class="mut">Runs <b>TradingAgents</b> — five analysts, a bull/bear debate, a trader
+    and a risk panel — over one holding. <b>Third-party generated research, not a
+    recommendation.</b> Trans neither endorses nor checks its conclusions.</p>
+   ${a.ready?`
+     <div class="row"><span class="lbl">Ticker</span>
+      <select id="rsel">${held.map(t=>`<option ${t===tick?'selected':''}>${t}</option>`).join('')}</select>
+      <button class="act" id="runr" ${running.length?'disabled':''}>
+        ${running.length?'Running…':'Run analysis'}</button>
+      <span class="mut" style="font-size:12px">
+        ${a.paid?`est. ${usd(est.low,2)}–${usd(est.high,2)} per run`
+                :'free · a local model takes minutes'}</span>
+     </div>
+     ${running.length?`<p class="mut">Analysing <b>${running[0].ticker}</b> since
+       ${running[0].started.replace('T',' ')} — this page updates itself.</p>`:''}`
+    :`<div class="banner">${(a.reason||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])).replace(/\n/g,'<br>')}
+      <br><br>Setup: <b>SETUP-ANALYSIS.md</b></div>`}
+  </div>
+  ${(d.reports||[]).length?`<div class="card"><h2>Stored reports</h2>
+   <div class="wrap"><table><thead><tr><th>Ticker</th><th>When</th><th>Sections</th>
+    <th>Model</th><th></th></tr></thead><tbody>
+    ${d.reports.map(r=>`<tr><td><b>${r.ticker}</b></td>
+      <td class="mut">${(r.created_at||'').replace('T',' ').slice(0,19)}</td>
+      <td>${r.n}</td><td class="mut">${(r.source||'').split('/').pop()}</td>
+      <td><button class="act ghost" data-open="${r.ticker}"
+        style="padding:3px 10px;font-size:12px">Open</button></td></tr>`).join('')}
+   </tbody></table></div></div>`:''}
+  <div id="rep"></div>`;
+  if(a.ready) $('#rsel').onchange=e=>{STATE.researchTicker=e.target.value;};
+  if(STATE.openReport) showReport(STATE.openReport);
+  if(running.length) setTimeout(()=>{if(tab==='research')research();},15000);
+
+  $('#main').onclick=async e=>{
+    const op=e.target.dataset&&e.target.dataset.open;
+    if(op){STATE.openReport=op;showReport(op);return;}
+    if(e.target.id==='runr'){
+      const t=$('#rsel').value;
+      if(a.paid){
+        const ok=confirm(`Run TradingAgents on ${t} using the Anthropic API?\n\n`
+          +`Estimated ${usd(est.low,2)}–${usd(est.high,2)} across ~${est.calls} model calls.\n`
+          +`This is an ESTIMATE — actual usage varies and is logged after the run.\n`
+          +(est.verified?'':'Pricing in pricing.json is UNVERIFIED.\n')
+          +`\nThis will be billed to your API key.`);
+        if(!ok) return;
+      }
+      e.target.disabled=true; e.target.textContent='Starting…';
+      const r=await post('/api/analysis/run',{ticker:t,consented:a.paid});
+      if(!r.ok) alert('Could not start: '+(r.error||'unknown'));
+      research();
+    }
+  };
+}
+
+async function showReport(t){
+  const r=await get('/api/analysis/'+t);
+  if(!r.sections||!r.sections.length){$('#rep').innerHTML='';return;}
+  const esc=x=>(x||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  $('#rep').innerHTML=`<div class="card">
+   <h2>${t} — report</h2>
+   <p class="mut">${(r.created_at||'').replace('T',' ').slice(0,19)} ·
+    <code>${esc(r.source)}</code><br>
+    Generated by TradingAgents, a third-party multi-agent model. Research output —
+    <b>not a recommendation</b>, and not checked by Trans.</p>
+   ${r.sections.map((s,i)=>`<details ${i===0?'open':''} style="margin-bottom:8px">
+     <summary style="cursor:pointer;font-weight:600;padding:5px 0">${s.label}</summary>
+     <pre style="white-space:pre-wrap">${esc(s.content)}</pre></details>`).join('')}
+  </div>`;
+}
+
 boot();
 // pick up out-of-band ingests (Claude Code writing straight to the DB) without a manual reload
 setInterval(async()=>{

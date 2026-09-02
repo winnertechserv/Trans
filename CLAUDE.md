@@ -31,6 +31,15 @@ per kind and the new data-through date. Do not ask for confirmation first.
 but you MUST merge the page ranges afterwards and verify coverage is contiguous before
 reporting success. Gaps are silent data loss.
 
+**"analyse <TICKER>" / "research <TICKER>"** — optional TradingAgents integration.
+Check `python3 app/analysis.py` first; if it is not ready, show the reason and stop.
+On the **anthropic** backend the run costs money: show the estimate and get explicit
+confirmation before starting, then POST /api/analysis/run with `consented: true`.
+On **ollama** it is free — just start it. Runs take minutes; poll
+GET /api/analysis/status rather than blocking. Report the decision line and where the
+report lives. Always present the result as **third-party generated research, not a
+recommendation**, and never restate it as your own investment advice.
+
 **"backup"** — `python3 app/backup.py snapshot manual` (or POST /api/backup). Only the
 database file is copied; code lives in git, not Drive. Snapshots go to
 `<drive root>/trans`, auto-detected on macOS and Linux. Report the filename and

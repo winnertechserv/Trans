@@ -49,11 +49,12 @@ CREATE TABLE IF NOT EXISTS quotes (
 CREATE TABLE IF NOT EXISTS ai_notes (
   id INTEGER PRIMARY KEY,
   ticker TEXT NOT NULL, created_at TEXT NOT NULL,
-  kind TEXT,                       -- ticker_health | portfolio_review
+  kind TEXT,                       -- 'ta:<section>' for TradingAgents reports
   content TEXT,
-  source TEXT,                     -- claude_code | claude_api
+  source TEXT,                     -- tradingagents/<backend>/<model> | claude_code
   ledger_id INTEGER
 );
+CREATE INDEX IF NOT EXISTS ix_ai_notes ON ai_notes(ticker, created_at);
 
 -- every operation that consumes tokens, whichever path it took
 CREATE TABLE IF NOT EXISTS token_ledger (

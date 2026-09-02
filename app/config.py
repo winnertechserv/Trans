@@ -119,11 +119,106 @@ def is_configured():
     except ConfigError:
         return False
 
+
+# ---------------------------------------------------------------- TradingAgents
+# Optional, out-of-process integration with TauricResearch/TradingAgents.
+# That project has NO LICENSE (all rights reserved) and pulls ~22 pip dependencies,
+# so it is never vendored here and never imported into this process. We only ever
+# hold a path to a clone the user installed themselves, and talk to it by subprocess.
+
+TA_DEFAULTS = {
+    "enabled": False,
+    "repo_path": "~/src/TradingAgents",
+    "venv_python": "~/src/TradingAgents/.venv/bin/python",
+    "backend": "ollama",
+    "max_debate_rounds": 1,
+    "max_risk_rounds": 1,
+    "results_dir": "analysis",
+    "ollama": {"backend_url": "http://localhost:11434/v1",
+               "deep_think_llm": "qwen3:14b", "quick_think_llm": "qwen3:8b"},
+    "anthropic": {"deep_think_llm": "claude-sonnet-5",
+                  "quick_think_llm": "claude-haiku-4-5-20251001",
+                  "require_consent": True, "max_cost_usd": 2.00},
+}
+
+def tradingagents():
+    cfg = dict(TA_DEFAULTS)
+    cfg.update(load().get("tradingagents") or {})
+    for k in ("ollama", "anthropic"):
+        merged = dict(TA_DEFAULTS[k]); merged.update(cfg.get(k) or {}); cfg[k] = merged
+    return cfg
+
+def ta_models(cfg=None):
+    cfg = cfg or tradingagents()
+    b = cfg.get("backend", "ollama")
+    sub = cfg.get(b, {})
+    return sub.get("deep_think_llm"), sub.get("quick_think_llm")
+
+def analysis_available():
+    """Why analysis can or cannot run. Always returns a dict — never raises — because
+    the Research tab must render a helpful message rather than an error."""
+    cfg = tradingagents()
+    b = cfg.get("backend", "ollama")
+    deep, quick = ta_models(cfg)
+    out = {"ready": False, "backend": b, "deep_think_llm": deep,
+           "quick_think_llm": quick, "paid": b != "ollama",
+           "repo": os.path.expanduser(cfg.get("repo_path") or ""),
+           "reason": None}
+    if "tradingagents" not in load():
+        out["reason"] = ('No "tradingagents" block in config.json. '
+                         "Copy it from config.example.json — see SETUP-ANALYSIS.md.")
+        return out
+    if not cfg.get("enabled"):
+        out["reason"] = 'Analysis is off. Set tradingagents.enabled = true in config.json.'
+        return out
+    vp = os.path.expanduser(cfg.get("venv_python") or "")
+    if not (vp and os.path.isfile(vp) and os.access(vp, os.X_OK)):
+        out["reason"] = (f"No TradingAgents interpreter at {vp or '(unset)'}.\n"
+                         "  python3 -m venv .venv && .venv/bin/pip install .   "
+                         "(inside your TradingAgents clone)")
+        return out
+    repo = out["repo"]
+    if not os.path.isdir(os.path.join(repo, "tradingagents")):
+        out["reason"] = (f"{repo or '(unset)'} does not look like a TradingAgents clone "
+                         "(no tradingagents/ package inside).\n"
+                         "  git clone https://github.com/TauricResearch/TradingAgents")
+        return out
+    if b == "ollama":
+        url = cfg["ollama"]["backend_url"]
+        if not _ollama_up(url):
+            out["reason"] = (f"Ollama is not answering at {url}.\n"
+                             f"  ollama serve &\n  ollama pull {deep}")
+            return out
+    elif b == "anthropic":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            out["reason"] = ("ANTHROPIC_API_KEY is not set in this environment.\n"
+                             "  export ANTHROPIC_API_KEY=...   then restart ./run.sh\n"
+                             "  (the key is deliberately never stored in config.json)")
+            return out
+    else:
+        out["reason"] = f'Unknown backend "{b}" — use "ollama" or "anthropic".'
+        return out
+    out["ready"] = True
+    return out
+
+def _ollama_up(url, timeout=1.5):
+    import urllib.request, urllib.error
+    base = url.rstrip("/")
+    if base.endswith("/v1"): base = base[:-3]
+    try:
+        urllib.request.urlopen(base + "/api/tags", timeout=timeout).read(1)
+        return True
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
     print("configured:", is_configured())
     for f in (account_number, port, keep_daily, keep_monthly):
         try: print(f" {f.__name__:22}", f())
         except ConfigError as e: print(f" {f.__name__:22} ERROR: {e}")
     print(" detected roots        ", detect_drive_roots() or "(none)")
+    a = analysis_available()
+    print(" analysis              ", "ready" if a["ready"] else a["reason"].splitlines()[0])
     try: print(" drive_backup_dir      ", drive_backup_dir())
     except ConfigError as e: print(" drive_backup_dir       NOT READY:", str(e).splitlines()[0])
