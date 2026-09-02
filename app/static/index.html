@@ -236,12 +236,27 @@ function overview(){
      <tr><td>First activity</td><td>${o.first}</td></tr>
      <tr><td>Fundamentals loaded</td><td>${h.n_fundamentals} tickers</td></tr>
    </tbody></table>
-   <h2 style="margin-top:18px">Top movers by XIRR</h2><table><tbody>
-     ${r.filter(x=>x.xirr!=null).sort((a,b)=>b.xirr-a.xirr).slice(0,5)
-       .map(x=>`<tr><td>${x.ticker}</td><td class="pos">${pct(x.xirr,1)}</td></tr>`).join('')}
-     ${r.filter(x=>x.xirr!=null).sort((a,b)=>a.xirr-b.xirr).slice(0,5).reverse()
-       .map(x=>`<tr><td>${x.ticker}</td><td class="neg">${pct(x.xirr,1)}</td></tr>`).join('')}
-   </tbody></table></div></div>`;
+   <h2 style="margin-top:18px">Top movers by XIRR</h2>
+   ${movers(r)}</div></div>`;
+}
+
+// XIRR is an ANNUAL rate, so a short round-trip explodes when annualised: TRIDENT
+// turned Rs960 into Rs1,505 over ten days, which is +57% but 1,362,658,947% a year.
+// True, and useless. Ranking raw XIRR also surfaced positions sold years ago, which are
+// not "movers" in any sense a portfolio dashboard means. So: current holdings only, and
+// only once there is enough time for an annual rate to mean something.
+const MOVER_MIN_DAYS=90;
+function movers(r){
+  const ok=r.filter(x=>x.xirr!=null && x.market_value>0 && (x.holding_days||0)>=MOVER_MIN_DAYS)
+            .sort((a,b)=>b.xirr-a.xirr);
+  const skipped=r.filter(x=>x.xirr!=null).length-ok.length;
+  if(!ok.length) return `<p class="mut">No holding has been open ${MOVER_MIN_DAYS} days yet.</p>`;
+  const row=x=>`<tr><td>${x.ticker}</td><td class="${x.xirr>=0?'pos':'neg'}">${pct(x.xirr,1)}</td>`
+              +`<td class="mut" style="text-align:right;font-size:11px">${Math.round(x.holding_days/30)}mo</td></tr>`;
+  const top=ok.slice(0,5), bot=ok.slice(-5).filter(x=>!top.includes(x)).reverse();
+  return `<table><tbody>${top.map(row).join('')}${bot.map(row).join('')}</tbody></table>`
+    +`<p class="mut" style="margin-top:6px;font-size:11px">Open holdings held ${MOVER_MIN_DAYS}+ days.`
+    +(skipped?` ${skipped} excluded — closed or too recent to annualise.`:'')+`</p>`;
 }
 
 let sortKey='market_value',sortDir=-1;
