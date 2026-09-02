@@ -13,6 +13,9 @@ align-items:baseline;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z
 h1{font-size:16px;margin:0;letter-spacing:-.01em}
 .kpis{display:flex;gap:22px;flex-wrap:wrap;margin-left:auto}
 .kpi b{display:block;font-size:19px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi b .pos{color:var(--pos)} .kpi b .neg{color:var(--neg)}
+.kpi b .na{color:var(--mut)}
+.kpi.date b{font-size:13px;font-weight:500;color:var(--mut);padding-top:5px}
 .kpi span{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 nav{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
 nav button{background:none;border:0;padding:11px 14px;color:var(--mut);cursor:pointer;
@@ -202,7 +205,7 @@ async function loadMarket(){
   // 1.92cr bought against 41L held, and the 1.68cr that came back out has to be visible
   // for the rest to make sense. Realised + unrealised + dividends reconstructs Net
   // gain/loss exactly, which is the arithmetic check that nothing is double counted.
-  const px=(v)=>v==null?'<span class="mut" style="font-size:14px">n/a</span>':pct(v);
+  const px=(v)=>v==null?'<span class="na">n/a</span>':`<span class="${sign(v)}">${pct(v)}</span>`;
   const gain=(v)=>`<span class="${sign(v)}">${usd(v)}</span>`;
   $('#kpis').innerHTML=[
     ['Current value',usd(o.market_value),'Shares held now × the latest price'],
@@ -210,15 +213,18 @@ async function loadMarket(){
      'What the shares you still hold actually cost. Zerodha reports a split-adjusted '
      +'average; for Robinhood it is weighted-average cost off the order history.'],
     ['Unrealized gain',gain(o.unrealized),'Current value less what those shares cost — on paper, not banked'],
-    ['Booked P/L',gain(o.realized),
-     'Profit or loss actually banked on everything sold: Total sold − (Total invested − Currently invested)'],
     ['Total invested',usd(o.invested),'Every unit of currency ever spent buying. Not reduced by sales.'],
     ['Total sold',usd(o.proceeds),'Lifetime cash out of sales'],
-    ['Net gain/loss',gain(o.net_profit),'Booked + Unrealized + Dividends'],
+    // Realised only, on purpose: money actually banked. Unrealized gain sits in its own
+    // figure and the two are deliberately not added up here — adding them is what
+    // "Net gain/loss" used to do, and it blurred earned with hoped-for.
+    ['Realized gain/loss',gain(o.realized+o.dividends),
+     `Money actually banked: ${usd(o.realized)} profit on shares sold plus ${usd(o.dividends)} `
+     +`in dividends. Excludes the ${usd(o.unrealized)} of unrealized gain on what you still hold.`],
     ['Dividends',usd(o.dividends,2),
      'US: reconstructed from DRIP reinvestment orders, so cash dividends are invisible. '
      +'India: 0 because the Zerodha tradebook carries no dividend rows.'],
-    ['XIRR on open',px(o.xirr_open),
+    ['XIRR on unrealized',px(o.xirr_open),
      'Annualised money-weighted return counting only positions you still hold — how the '
      +'things you own are doing, with closed round-trips excluded.'],
     ['Net XIRR',px(o.xirr),
@@ -226,8 +232,9 @@ async function loadMarket(){
      +'included. Short round-trips distort it upward because the rate is annualised.'],
     ['Data through',h.last_transaction_date
       ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
-      : `<span class="mut" style="font-size:14px">holdings only</span>`]
-  ].map(([s,v,t])=>`<div class="kpi"${t?` title="${t}"`:''}><span>${s}</span><b>${v}</b></div>`).join('');
+      : 'holdings only', null, 'date']
+  ].map(([s,v,t,cls])=>`<div class="kpi${cls?' '+cls:''}"${t?` title="${t}"`:''}>`
+      +`<span>${s}</span><b>${v}</b></div>`).join('');
   [...$('#mkt').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===STATE.market));
 }
 
