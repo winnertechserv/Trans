@@ -94,6 +94,11 @@ regenerates them on every start; if you need them sooner, run `python3 app/sync.
   `RENAMES`/`ticker_aliases` changed in between. The flip side: a rename added later does
   not reach rows already stored, because the whole row is skipped. Run
   `python3 app/ingest.py remap` for that — re-uploading will not do it.
+- **Zerodha mutual funds need `get_mf_holdings`.** They sit outside the demat, so
+  `get_holdings()` does not return them and the tradebook does not contain them — they
+  were invisible until that call was added. Keyed on the ISIN Kite reports as
+  `tradingsymbol`, with the fund name stored as a `name` metric. Holdings only, so no
+  XIRR. Kite has no MF order history endpoint.
 - **The Zerodha tradebook is the EQ segment only.** Bonds and SGBs bought in the primary
   market, and shares received from a demerger, have no purchase row and never will. They
   fall back to the broker's average cost for a basis and honestly report no XIRR. This is

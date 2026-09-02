@@ -92,6 +92,9 @@ def company_names(c):
 def _no_history_note(asset, has_txns):
     if not has_txns:
         return "no transaction history — import a tradebook for XIRR"
+    if asset == "mf":
+        return ("mutual fund units — Kite exposes holdings only, with no order history, "
+                "so cost basis is the broker average and there is no XIRR")
     if asset in ("sgb", "bond"):
         return ("bought in the primary market, not through the equity tradebook — "
                 "cost basis is the broker average, so there is no XIRR")

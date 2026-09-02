@@ -197,12 +197,15 @@ def kite_daily_prompt(c):
     return f"""Sync my Zerodha (Kite) portfolio into Trans. Read-only — never place,
 modify or cancel an order.
 
-1. get_holdings() — the full holdings list.
-2. get_trades() — today's executed trades (Kite keeps only one day; that is expected).
-3. get_positions() — intraday/derivative positions, if any.
+1. get_holdings() — the full demat holdings list.
+2. get_mf_holdings() — mutual funds. These sit OUTSIDE the demat and appear in no
+   other call, so skipping this loses them entirely.
+3. get_trades() — today's executed trades (Kite keeps only one day; that is expected).
+4. get_positions() — intraday/derivative positions, if any.
 
 Write to {INBOX}/ as separate envelope files:
   {{"kind":"kite_holdings","fetched_at":"<ISO>","data":[ ...raw holdings objects... ]}}
+  {{"kind":"kite_mf_holdings","fetched_at":"<ISO>","data":[ ...raw MF holdings objects... ]}}
   {{"kind":"kite_trades","fetched_at":"<ISO>","data":[ ...raw trade objects... ]}}
 
 For holdings pass the raw objects through unchanged — the ingester reads

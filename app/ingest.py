@@ -113,6 +113,43 @@ def ingest_zerodha_tradebook(c, paths):
     return n, seen_files
 
 
+def upsert_kite_mf_holdings(c, rows, asof=None):
+    """Kite get_mf_holdings() -> positions, as asset 'mf'.
+
+    Mutual funds live outside the demat entirely, which is why they were invisible: the
+    tradebook is the EQ segment and get_holdings() returns only demat stock. They are
+    keyed on the ISIN Kite reports as `tradingsymbol` (INF966L01614) because that is the
+    stable identifier across platforms — the same fund bought through another broker
+    carries the same ISIN. The readable fund name is stored alongside as a `name` metric,
+    the same way equity names are, so the UI shows the fund and not the ISIN.
+
+    There is no order history: Kite exposes holdings only, so units and average cost come
+    from the broker and these report no XIRR, like the SGBs.
+    """
+    asof = asof or dt.date.today().isoformat()
+    n = 0
+    for r in rows:
+        isin = (r.get("tradingsymbol") or "").strip().upper()
+        qty = r.get("quantity")
+        if not isin or not qty:
+            continue
+        c.execute("INSERT INTO positions(ticker,quantity,price,asset,asof,broker,"
+                  "currency,exchange,avg_cost) VALUES(?,?,?,?,?,?,?,?,?)"
+                  " ON CONFLICT(broker,ticker) DO UPDATE SET quantity=excluded.quantity,"
+                  " price=excluded.price,asof=excluded.asof,avg_cost=excluded.avg_cost,"
+                  " asset=excluded.asset,exchange=excluded.exchange",
+                  (isin, float(qty), float(r.get("last_price") or 0), "mf", asof,
+                   "zerodha", "INR", "MF", float(r.get("average_price") or 0)))
+        fund = (r.get("fund") or "").strip()
+        if fund:
+            c.execute("INSERT INTO fundamentals(ticker,asof,metric,value,text_value)"
+                      " VALUES(?,?,?,NULL,?) ON CONFLICT(ticker,asof,metric)"
+                      " DO UPDATE SET text_value=excluded.text_value",
+                      (isin, asof, "name", fund))
+        n += 1
+    return n
+
+
 def _kite_asset(sym):
     """Not everything in an Indian demat is a stock — Sovereign Gold Bonds and listed
     bonds sit alongside equities and must not be sector-classified as companies."""
@@ -187,7 +224,7 @@ def upsert_quotes(c, rows, date=None):
 
 HANDLERS = {
     "orders_equity": upsert_equity_orders, "orders_crypto": upsert_crypto_orders,
-    "kite_holdings": upsert_kite_holdings,
+    "kite_holdings": upsert_kite_holdings, "kite_mf_holdings": upsert_kite_mf_holdings,
     "positions": upsert_positions, "fundamentals": upsert_fundamentals, "quotes": upsert_quotes,
 }
 

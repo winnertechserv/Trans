@@ -570,7 +570,7 @@ async function analysis(){
 }
 
 async function fund(){
-  const eligible=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto')
+  const eligible=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto'&&!['mf','sgb','bond'].includes(r.asset))
     .sort((a,b)=>b.market_value-a.market_value);
   if(!eligible.length){ $('#main').innerHTML=`<div class="card"><h2>No holdings yet</h2>
     <p class="mut">Run a sync first, then <b>sync fundamentals</b> in Claude Code.</p></div>`; return; }
@@ -743,7 +743,7 @@ async function research(){
   $('#main').innerHTML='<div class="card">loading…</div>';
   const d=await get('/api/analysis');
   const a=d.available, est=d.estimate;
-  const held=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto')
+  const held=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto'&&!['mf','sgb','bond'].includes(r.asset))
     .sort((x,y)=>y.market_value-x.market_value).map(r=>r.ticker);
   const tick=STATE.researchTicker||held[0];
   const chip=a.paid
