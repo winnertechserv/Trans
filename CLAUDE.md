@@ -82,6 +82,16 @@ regenerates them on every start; if you need them sooner, run `python3 app/sync.
 - **Period alignment**: when deriving a margin, the numerator and denominator must cover
   the same period. Filing-year operating income over TTM revenue is wrong. Pull revenue
   from the same filing.
+- **Zerodha symbols need normalising on both sides.** Holdings carry the NSE series code
+  (`MTARTECH-BE`) and the tradebook does not (`MTARTECH`); renamed companies keep the old
+  symbol on old trades (`GET&D` -> `GVT&D`). Everything goes through
+  `markets.canonical_symbol()`. If a holding shows no XIRR, suspect a rename first and
+  check whether an old symbol's net quantity completes it — add confirmed renames to
+  `markets.RENAMES`, or per-user ones to `ticker_aliases` in `config.json`.
+- **The Zerodha tradebook is the EQ segment only.** Bonds and SGBs bought in the primary
+  market, and shares received from a demerger, have no purchase row and never will. They
+  fall back to the broker's average cost for a basis and honestly report no XIRR. This is
+  correct, not a gap to fill.
 - Only rows with empty `axises` in SEC facts are consolidated totals; the rest are
   segment breakdowns.
 - `pricing.json` starts unverified — do not present its dollar figures as authoritative.

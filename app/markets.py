@@ -44,6 +44,25 @@ def base_symbol(ticker):
     return t
 
 
+# Tickers change when a company is renamed or demerged, and the broker's tradebook keeps
+# whatever the symbol was on the trade date. Without a mapping the history splits in two
+# and neither half has a complete cost basis: GE T&D India became GE Vernova T&D India in
+# 2025, so GET&D holds the buys (+24) and GVT&D holds the rest (+10) of one 34-share
+# position. Renames are facts about the market, not about one portfolio, so the ones we
+# have confirmed live here; `ticker_aliases` in config.json extends this per user.
+RENAMES = {
+    "GET&D": "GVT&D",   # GE T&D India -> GE Vernova T&D India (2025)
+}
+
+
+def canonical_symbol(ticker, aliases=None):
+    """Base symbol with any rename applied — the form both trades and holdings use."""
+    t = base_symbol(ticker)
+    if aliases and t in aliases:
+        return base_symbol(aliases[t])
+    return RENAMES.get(t, t)
+
+
 def yahoo_symbol(ticker, market, exchange=None):
     """Yahoo Finance symbol for a holding — used by research and fundamentals.
     NSE listings take .NS, BSE takes .BO; US symbols are unsuffixed."""
@@ -57,3 +76,5 @@ if __name__ == "__main__":
         print(f"  {m['flag']} {m['label']:6} broker={m['broker']:10} {m['currency']}")
     print("  yahoo:", yahoo_symbol("MSFT", "us"), yahoo_symbol("DIXON", "in", "BSE"),
           yahoo_symbol("ARVIND", "in", "NSE"))
+    print("  canon:", canonical_symbol("MTARTECH-BE"), canonical_symbol("GET&D"),
+          canonical_symbol("RELIANCE"))

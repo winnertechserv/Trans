@@ -25,6 +25,16 @@ def _positions(c, market=None):
     return {r["ticker"]: Position(r["ticker"], r["quantity"], r["price"])
             for r in c.execute(q, (br,) if br else ())}
 
+def _no_history_note(asset, has_txns):
+    if not has_txns:
+        return "no transaction history — import a tradebook for XIRR"
+    if asset in ("sgb", "bond"):
+        return ("bought in the primary market, not through the equity tradebook — "
+                "cost basis is the broker average, so there is no XIRR")
+    return ("no purchase on record (demerger or corporate action) — cost basis is the "
+            "broker average, so there is no XIRR")
+
+
 def results(c, as_of=None, market=None):
     per, overall = analyse(_txns(c, market), _positions(c, market),
                            as_of=as_of or dt.date.today())
@@ -48,6 +58,11 @@ def results(c, as_of=None, market=None):
     # genuinely cannot be computed without dated flows, and says so rather than showing 0.
     seen = {r["ticker"] for r in rows}
     br = M.broker_of(market) if market else None
+    # Once a tradebook is loaded, "import a tradebook" stops being the right explanation.
+    # What is left are holdings the equity tradebook structurally cannot contain: bonds
+    # and SGBs bought in the primary market, and shares received from a demerger, which
+    # arrive with a carved-out cost basis and no purchase of their own.
+    has_txns = bool(rows)
     q = ("SELECT ticker,quantity,price,avg_cost,asset,exchange FROM positions"
          + (" WHERE broker=?" if br else ""))
     for p in c.execute(q, (br,) if br else ()):
@@ -57,7 +72,7 @@ def results(c, as_of=None, market=None):
         val = (p["price"] or 0) * p["quantity"]
         rows.append({
             "ticker": p["ticker"], "xirr": None,
-            "note": "no transaction history — import a tradebook for XIRR",
+            "note": _no_history_note(p["asset"], has_txns),
             "invested": inv, "proceeds": 0.0, "dividends": 0.0, "market_value": val,
             "net_profit": val - inv, "simple_return": (val / inv - 1) if inv else None,
             "open": True, "quantity": p["quantity"], "n_flows": 0,

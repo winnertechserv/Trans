@@ -37,6 +37,10 @@ def crypto_account_number():
     try: return _req("broker.crypto_account_number", "")
     except ConfigError: return account_number()
 def port():                  return int(load().get("port") or 8787)
+def ticker_aliases():
+    """Optional {old_symbol: new_symbol} overrides for renames we do not ship."""
+    return {str(k).upper(): str(v).upper()
+            for k, v in (load().get("ticker_aliases") or {}).items()}
 def keep_daily():            return int((load().get("backup") or {}).get("keep_daily", 30))
 def keep_monthly():          return int((load().get("backup") or {}).get("keep_monthly", 12))
 
