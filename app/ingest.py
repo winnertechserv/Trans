@@ -82,23 +82,47 @@ def ingest_zerodha_tradebook(c, paths):
       * Symbols carry an NSE series code in holdings but not in the tradebook
         (MTARTECH-BE vs MTARTECH), and renamed companies keep the old symbol on old
         trades (GET&D -> GVT&D), so both sides go through markets.canonical_symbol.
-      * The export is the EQ segment only. Bonds and Sovereign Gold Bonds bought in the
+      * The EQ export holds equities only. Bonds and Sovereign Gold Bonds bought in the
         primary market never appear, and neither do shares received from demergers.
+        Mutual funds come from a separate MF export in the same shape — handled here,
+        keyed on ISIN because the fund name is not stable across Zerodha's own sources.
     """
     n = 0
     seen_files = []
+    mf_names = {}
     aliases = CFG.ticker_aliases()
     for path in sorted(paths):
         with open(path, newline="", encoding="utf-8-sig") as fh:
             rows = list(csv.DictReader(fh))
         for r in rows:
             raw = (r.get("symbol") or "").strip().upper()
-            sym = MK.canonical_symbol(raw, aliases)
             qty = float(r.get("quantity") or 0)
             px = float(r.get("price") or 0)
             side = (r.get("trade_type") or "").strip().lower()
             date = (r.get("trade_date") or "")[:10]
-            if not (sym and qty and side in ("buy", "sell") and date):
+            if not (qty and side in ("buy", "sell") and date):
+                continue
+
+            # Mutual fund exports share the equity schema but fill it differently:
+            # segment is MF, `symbol` holds the fund's NAME rather than a ticker, and the
+            # ISIN column is the only stable identifier. Names genuinely move — the same
+            # INF966L01614 is "QUANT ACTIVE FUND" in the tradebook and "QUANT MULTI CAP
+            # FUND" from get_mf_holdings, and INF247L01445 is "DIRECT GROWTH" in one and
+            # "DIRECT PLAN" in the other — so keying on the name would split one fund's
+            # history in two. ISIN also matches how MF positions are already stored.
+            if (r.get("segment") or "").strip().upper() == "MF":
+                isin = (r.get("isin") or "").strip().upper()
+                if not isin:
+                    continue
+                oid = f"zmf:{r.get('trade_id','')}:{date}:{isin}"
+                n += _ins2(c, oid, date, isin, side, qty, px, None, 0.0,
+                           "mf", "user", "zerodha", "INR")
+                if raw:
+                    mf_names.setdefault(isin, r.get("symbol").strip())
+                continue
+
+            sym = MK.canonical_symbol(raw, aliases)
+            if not sym:
                 continue
             # Key on the RAW symbol from the file, never the resolved one: resolution
             # depends on markets.RENAMES and config ticker_aliases, and if either changes
@@ -109,6 +133,14 @@ def ingest_zerodha_tradebook(c, paths):
             n += _ins2(c, oid, date, sym, side, qty, px, None, 0.0,
                        _kite_asset(sym), "user", "zerodha", "INR")
         seen_files.append(f"{os.path.basename(path)}:{len(rows)}")
+    # Only fill a name where none exists: get_mf_holdings runs against funds still held
+    # and is the fresher source, so it wins. The tradebook is the only name available for
+    # funds fully exited.
+    today = dt.date.today().isoformat()
+    for isin, fund in mf_names.items():
+        c.execute("INSERT INTO fundamentals(ticker,asof,metric,value,text_value)"
+                  " VALUES(?,?,?,NULL,?) ON CONFLICT(ticker,asof,metric) DO NOTHING",
+                  (isin, today, "name", fund))
     c.commit()
     return n, seen_files
 

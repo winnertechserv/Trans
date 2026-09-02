@@ -155,12 +155,14 @@ def results(c, as_of=None, market=None):
 
     nm = company_names(c)
     basis, no_basis, _broken = cost_basis(c, market)
+    short = _unreconciled(c, market)
     tot = sum(r["market_value"] for r in rows) or 1
     for r in rows:
         r["weight"] = r["market_value"] / tot
         r["name"] = nm.get(r["ticker"])
         b = basis.get(r["ticker"])
         r["cost_basis"] = b
+        r["short_units"] = short.get(r["ticker"])
         r["unrealized"] = (r["market_value"] - b) if b is not None else None
     # Realised vs unrealised. Cost of the shares still held comes from cost_basis(); the
     # cost of everything already sold is then whatever is left of lifetime spend, so
@@ -180,13 +182,45 @@ def results(c, as_of=None, market=None):
           "unrealized": val_t - held_cost,         # paper gain on those
           "realized": realized_t,                  # booked, from everything sold
           "xirr_open": xirr_open, "xirr_open_note": open_note,
-          "no_basis": no_basis,
+          "no_basis": no_basis, "unreconciled": sorted(short),
           "simple_return": (net_t / inv_t) if inv_t else None,
           "holdings_only": overall_extra[0] > 0 and overall.n_flows == 0,
           "first": overall.first_activity.isoformat() if overall.first_activity else None,
           "last": overall.last_activity.isoformat() if overall.last_activity else None,
           "n_flows": overall.n_flows}
     return rows, ov
+
+def _unreconciled(c, market):
+    """Holdings whose order history buys fewer units than the broker says are held.
+
+    Only checked for mutual funds, because they never split: units in equal units out, so
+    a shortfall means purchase rows are genuinely absent — a missing year of the Console
+    export, typically, since Zerodha files those per financial year. That matters beyond
+    a cosmetic gap: realised profit is derived as sold - (invested - still held), so an
+    understated `invested` inflates realised by exactly the missing purchase value even
+    though the fund has never been sold.
+
+    Equities are deliberately excluded: their derived counts drift for split-adjusted
+    tickers as a matter of course, and flagging those would be noise.
+    """
+    br = M.broker_of(market) if market else None
+    held = {r["ticker"]: r["quantity"] for r in c.execute(
+        "SELECT ticker,quantity FROM positions WHERE asset='mf'"
+        + (" AND broker=?" if br else ""), (br,) if br else ())}
+    if not held:
+        return {}
+    got = collections.defaultdict(float)
+    for r in c.execute(
+            "SELECT ticker,type,quantity FROM transactions WHERE asset='mf'"
+            + (" AND broker=?" if br else ""), (br,) if br else ()):
+        got[r["ticker"]] += r["quantity"] if r["type"] == "buy" else -r["quantity"]
+    out = {}
+    for t, qty in held.items():
+        gap = qty - got.get(t, 0.0)
+        if gap > 1e-6 and got.get(t, 0.0) > 0:      # has history, but not enough of it
+            out[t] = round(gap, 4)
+    return out
+
 
 def _xirr_open(c, market, as_of):
     """XIRR over positions still held — the rate on money actually still in the market.

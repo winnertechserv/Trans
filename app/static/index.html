@@ -260,6 +260,15 @@ function overview(){
   $('#main').innerHTML=`
   ${h.days_stale>2?`<div class="banner">Data is ${h.days_stale} days old. Run a sync from the
     <b>Sync &amp; cost</b> tab.</div>`:''}
+  ${(o.unreconciled||[]).length?`<div class="banner">
+    <b>${o.unreconciled.length} fund${o.unreconciled.length>1?'s hold':' holds'} more units than the
+    imported order history accounts for</b> —
+    ${o.unreconciled.map(t=>{const x=r.find(y=>y.ticker===t)||{};
+      return `${(x.name||t)} is short ${x.short_units} units`;}).join('; ')}.
+    Purchase rows are missing, most likely a financial year absent from the Console
+    export. Realized gain/loss is overstated by the value of those missing purchases
+    until the gap is filled, because profit is derived as sold − (invested − still held).
+    </div>`:''}
   <div class="grid">
    <div class="card"><h2>Allocation</h2>
     <div class="row">
