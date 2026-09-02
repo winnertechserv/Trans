@@ -44,6 +44,8 @@ button.act.ghost{background:transparent;color:var(--ink);border:1px solid var(--
 font:inherit;color:var(--mut);cursor:pointer}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed=true]{background:var(--acc);color:#fff;font-weight:600}
+header .seg{margin-left:4px}
+header .seg button{padding:5px 12px;font-size:13px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 10px}
 .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .prhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
@@ -107,13 +109,16 @@ details{border:1px solid var(--line);border-radius:8px;padding:4px 12px;backgrou
 details[open]{padding-bottom:10px}
 .secbtns{margin-left:auto;display:flex;gap:6px;align-items:center}
 </style></head><body>
-<header><h1>Portfolio</h1><div class="kpis" id="kpis"></div></header>
+<header><h1>Trans</h1><span class="seg" id="mkt"></span><div class="kpis" id="kpis"></div></header>
 <nav id="nav"></nav><main id="main">loading…</main>
 <dialog id="consent"></dialog>
 <script>
 const $=s=>document.querySelector(s);
-const fmt=(n,d=0)=>n==null?'—':n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-const usd=(n,d=0)=>n==null?'—':'$'+fmt(n,d);
+let MKT={key:'us',symbol:'$',locale:'en-US',currency:'USD',label:'US',flag:'🇺🇸'};
+const fmt=(n,d=0)=>n==null?'—':n.toLocaleString(MKT.locale,{minimumFractionDigits:d,maximumFractionDigits:d});
+// Amounts are always in the selected market's own currency — the two are never summed
+// or converted, so this only ever needs to format, never to translate a value.
+const usd=(n,d=0)=>n==null?'—':MKT.symbol+fmt(n,d);
 const pct=(n,d=2)=>n==null?'—':(n*100).toFixed(d)+'%';
 const sign=n=>n==null?'mut':n>=0?'pos':'neg';
 const get=u=>fetch(u).then(r=>r.json());
@@ -133,48 +138,76 @@ let tab='overview';
 // specific holding or report can be linked to directly.
 const TICKER_TABS={fund:'/fundamentals',research:'/research'};
 
+const MARKET_KEYS=['us','in'];
+
+// URLs are /<market>/<tab>[/<ticker>] — the market leads because the two are never
+// combined, so every view belongs to exactly one of them.
 function routeFrom(pathname){
   const seg=decodeURIComponent(pathname).replace(/\/+$/,'').split('/').filter(Boolean);
-  if(!seg.length) return {tab:'overview',ticker:null};
+  const market=MARKET_KEYS.includes((seg[0]||'').toLowerCase())
+    ? seg.shift().toLowerCase() : (STATE.market||'us');
+  if(!seg.length) return {market,tab:'overview',ticker:null};
   const hit=TABS.find(([,,p])=>p==='/'+seg[0]);
-  if(!hit) return {tab:'overview',ticker:null};
-  return {tab:hit[0], ticker:seg[1]?seg[1].toUpperCase():null};
+  if(!hit) return {market,tab:'overview',ticker:null};
+  return {market, tab:hit[0], ticker:seg[1]?seg[1].toUpperCase():null};
 }
 
-function urlFor(t,ticker){
+function urlFor(t,ticker,market){
+  const m=market||STATE.market||'us';
   const base=PATH_OF[t]||'/';
-  return (ticker && TICKER_TABS[t]) ? `${TICKER_TABS[t]}/${ticker}` : base;
+  const tail=(ticker && TICKER_TABS[t]) ? `${TICKER_TABS[t]}/${ticker}` : base;
+  return ('/'+m+(tail==='/'?'':tail));
 }
 
-function applyRoute(r,{push=false,replace=false}={}){
+async function applyRoute(r,{push=false,replace=false}={}){
+  const changedMarket = r.market && r.market!==STATE.market;
+  if(r.market) STATE.market=r.market;
   tab=r.tab;
+  if(changedMarket){ STATE.fundTicker=null; STATE.openReport=null; STATE.researchTicker=null;
+    await loadMarket(); }
   if(r.tab==='fund' && r.ticker) STATE.fundTicker=r.ticker;
   if(r.tab==='research') STATE.openReport=r.ticker||null;
   [...$('#nav').children].forEach(b=>b.setAttribute('aria-selected',b.dataset.t===tab));
-  document.title = tab==='overview' ? 'Trans'
-    : `Trans · ${(TABS.find(x=>x[0]===tab)||[])[1]}${r.ticker?' · '+r.ticker:''}`;
-  const u=urlFor(r.tab,r.ticker);
+  document.title = tab==='overview' ? `Trans · ${MKT.label}`
+    : `Trans · ${MKT.label} · ${(TABS.find(x=>x[0]===tab)||[])[1]}${r.ticker?' · '+r.ticker:''}`;
+  const u=urlFor(r.tab,r.ticker,r.market);
   if(push && location.pathname!==u) history.pushState(r,'',u);
   else if(replace) history.replaceState(r,'',u);
   render();
 }
 
-function go(t,ticker){ applyRoute({tab:t,ticker:ticker||null},{push:true}); }
+function go(t,ticker){ applyRoute({market:STATE.market,tab:t,ticker:ticker||null},{push:true}); }
+function goMarket(m){ applyRoute({market:m,tab:tab,ticker:null},{push:true}); }
 
 $('#nav').innerHTML=TABS.map(([k,l,p])=>
   `<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
 $('#nav').onclick=e=>{const t=e.target.dataset.t; if(!t)return; go(t,null);};
 window.addEventListener('popstate',e=>applyRoute(e.state||routeFrom(location.pathname)));
 
-async function boot(){
-  STATE.ov=await get('/api/overview');
+async function loadMarket(){
+  STATE.ov=await get('/api/overview?market='+(STATE.market||'us'));
+  MKT=STATE.ov.market||MKT;
   const o=STATE.ov.overall,h=STATE.ov.health;
   $('#kpis').innerHTML=[
-    ['Value',usd(o.market_value)],['XIRR',pct(o.xirr)],
+    ['Value',usd(o.market_value)],
+    ['XIRR', o.xirr==null?'<span class="mut" style="font-size:14px">no history</span>':pct(o.xirr)],
     ['Net P/L',usd(o.net_profit)],['Invested',usd(o.invested)],
     ['Dividends',usd(o.dividends,2)],
-    ['Data through',h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')]
+    ['Data through',h.last_transaction_date
+      ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
+      : `<span class="mut" style="font-size:14px">holdings only</span>`]
   ].map(([s,v])=>`<div class="kpi"><span>${s}</span><b>${v}</b></div>`).join('');
+  [...$('#mkt').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===STATE.market));
+}
+
+async function boot(){
+  const mi=await get('/api/markets');
+  STATE.market=routeFrom(location.pathname).market||mi.default;
+  $('#mkt').innerHTML=mi.markets.map(m=>
+    `<button data-m="${m.key}" aria-pressed="${m.key===STATE.market}"
+      title="${m.currency}">${m.flag} ${m.label}</button>`).join('');
+  $('#mkt').onclick=e=>{const m=e.target.closest('button')?.dataset.m; if(m&&m!==STATE.market) goMarket(m);};
+  await loadMarket();
   applyRoute(routeFrom(location.pathname),{replace:true});   // deep link / refresh
 }
 function render(){({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();}
@@ -239,7 +272,7 @@ function holdings(){
 async function buys(){
   $('#main').innerHTML='<div class="card">loading…</div>';
   const days=STATE.buyDays||30;
-  const [d,p]=await Promise.all([get('/api/daily-buys?days='+days),get('/api/buy-program?days='+days)]);
+  const [d,p]=await Promise.all([get('/api/daily-buys?days='+days+'&market='+STATE.market),get('/api/buy-program?days='+days+'&market='+STATE.market)]);
   $('#main').innerHTML=`
   <div class="card"><h2>Recurring programme — last ${p.days} trading days</h2>
    <p class="mut">${usd(p.total)} deployed · <b>${usd(p.per_day)}/day</b> across ${p.tickers.length} tickers</p>
@@ -261,7 +294,7 @@ async function buys(){
 }
 
 async function divs(){
-  const d=await get('/api/dividends');
+  const d=await get('/api/dividends?market='+STATE.market);
   const mx=Math.max(...d.by_year.map(y=>y.amount));
   $('#main').innerHTML=`
    <div class="card"><h2>Dividends — ${usd(d.total,2)} lifetime</h2>
@@ -276,7 +309,7 @@ async function divs(){
 }
 
 async function analysis(){
-  const [a,cn]=await Promise.all([get('/api/allocation'),get('/api/contributions')]);
+  const [a,cn]=await Promise.all([get('/api/allocation?market='+STATE.market),get('/api/contributions?market='+STATE.market)]);
   const ms=Math.max(...a.by_sector.map(s=>s.value));
   const cs=cn.series.slice(-24),cm=Math.max(...cs.map(x=>x.amount));
   $('#main').innerHTML=`
@@ -821,15 +854,9 @@ boot();
 // pick up out-of-band ingests (Claude Code writing straight to the DB) without a manual reload
 setInterval(async()=>{
   try{
-    const h=await get('/api/health');
+    const h=await get('/api/health?market='+(STATE.market||'us'));
     if(h.n_transactions!==STATE.ov.health.n_transactions){
-      STATE.ov=await get('/api/overview');
-      const o=STATE.ov.overall,hh=STATE.ov.health;
-      $('#kpis').innerHTML=[['Value',usd(o.market_value)],['XIRR',pct(o.xirr)],
-        ['Net P/L',usd(o.net_profit)],['Invested',usd(o.invested)],
-        ['Dividends',usd(o.dividends,2)],
-        ['Data through',hh.last_transaction_date+(hh.days_stale>1?` (${hh.days_stale}d old)`:'')]
-      ].map(([s,v])=>`<div class="kpi"><span>${s}</span><b>${v}</b></div>`).join('');
+      await loadMarket();
       render();
     }
   }catch(e){}

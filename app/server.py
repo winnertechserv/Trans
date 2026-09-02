@@ -6,7 +6,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.dirname(HERE))
 import db as D, analytics as A, sync as SY, costs as C, sectors as S, ingest as I
-import backup as B, config as CFG, analysis as AN, explain as EX
+import backup as B, config as CFG, analysis as AN, explain as EX, markets as MK
 
 STATIC = os.path.join(HERE, "static")
 
@@ -38,23 +38,27 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, open(os.path.join(STATIC, "index.html"), "rb").read(),
                                   "text/html; charset=utf-8")
             c = D.connect()
+            mk = MK.get(q.get("market", [None])[0])["key"]
+            if p == "/api/markets":
+                return self._json({"markets": MK.all_markets(), "default": MK.DEFAULT})
             if p == "/api/overview":
                 try: B.maybe_auto_backup()
                 except Exception: pass
-                rows, ov = A.results(c)
-                return self._json({"overall": ov, "results": rows, "health": A.health(c),
+                rows, ov = A.results(c, market=mk)
+                return self._json({"market": MK.get(mk), "overall": ov, "results": rows,
+                                   "health": A.health(c, market=mk),
                                    "pricing_verified": C.pricing().get("verified", False)})
             if p == "/api/results":
-                rows, ov = A.results(c); return self._json({"results": rows, "overall": ov})
+                rows, ov = A.results(c, market=mk); return self._json({"results": rows, "overall": ov, "market": MK.get(mk)})
             if p == "/api/daily-buys":
-                return self._json(A.daily_buys(c, int(q.get("days", ["30"])[0])))
+                return self._json(A.daily_buys(c, int(q.get("days", ["30"])[0]), market=mk))
             if p == "/api/buy-program":
-                return self._json(A.buy_program(c, int(q.get("days", ["30"])[0])))
-            if p == "/api/dividends":   return self._json(A.dividends(c))
-            if p == "/api/allocation":  return self._json(A.allocation(c))
-            if p == "/api/contributions": return self._json(A.contributions(c))
+                return self._json(A.buy_program(c, int(q.get("days", ["30"])[0]), market=mk))
+            if p == "/api/dividends":   return self._json(A.dividends(c, market=mk))
+            if p == "/api/allocation":  return self._json(A.allocation(c, market=mk))
+            if p == "/api/contributions": return self._json(A.contributions(c, market=mk))
             if p == "/api/costs":       return self._json(A.costs(c))
-            if p == "/api/health":      return self._json(A.health(c))
+            if p == "/api/health":      return self._json(A.health(c, market=mk))
             if p.startswith("/api/fundamentals/"):
                 return self._json(A.fundamentals(c, p.rsplit("/", 1)[1].upper()))
             if p == "/api/sync/prompt":

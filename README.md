@@ -26,15 +26,25 @@ Data lives in a SQLite file you own. Claude Code is the only tool needed to oper
 | **Research** | optional TradingAgents reports per holding (see below) |
 | **Sync & cost** | sync prompts, backup and restore, token/cost ledger |
 
-Every tab has its own URL, so views can be bookmarked and shared, and browser
-back/forward work:
+## Two markets, kept separate
+
+Trans supports a US broker (Robinhood, USD) and an Indian one (Zerodha, NSE/BSE, INR).
+A toggle in the header switches between them and every tab follows.
+
+**They are never combined.** There is no "All" view, no conversion and no blended
+return. Summing two currencies needs an FX rate, and currency movement would then sit
+inside your reported returns — real, but not stock performance. Each market is shown in
+its own currency, with its own XIRR, formatted for its own locale (₹41,36,165 the Indian
+way, $108,664 the American way).
+
+Every view has its own URL, so it can be bookmarked and shared, and back/forward work:
 
 | URL | View |
 |---|---|
-| `/` | Overview |
-| `/holdings` `/daily-buys` `/dividends` `/analysis` `/sync` | the matching tab |
-| `/fundamentals` · `/fundamentals/MSFT` | Fundamentals, optionally on one holding |
-| `/research` · `/research/MSFT` | Research, optionally with a report open |
+| `/us` · `/in` | Overview for that market |
+| `/in/holdings` `/us/dividends` `/in/analysis` … | the matching tab |
+| `/us/fundamentals/MSFT` | Fundamentals on one holding |
+| `/us/research/MSFT` | Research with a report open |
 
 Refreshing a deep link restores that exact view. Unknown paths fall back to Overview.
 

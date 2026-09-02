@@ -14,20 +14,30 @@ CREATE TABLE IF NOT EXISTS transactions (
   price      REAL,
   amount     REAL,                 -- dividends: cash amount
   fees       REAL DEFAULT 0,
-  asset      TEXT DEFAULT 'equity',-- equity | crypto
+  asset      TEXT DEFAULT 'equity',-- equity | crypto | bond | sgb
   agent      TEXT,                 -- user | recurring | drip
-  account    TEXT
+  account    TEXT,
+  broker     TEXT DEFAULT 'robinhood',
+  currency   TEXT DEFAULT 'USD'
 );
 CREATE INDEX IF NOT EXISTS ix_tx_ticker ON transactions(ticker);
 CREATE INDEX IF NOT EXISTS ix_tx_date   ON transactions(date);
 CREATE INDEX IF NOT EXISTS ix_tx_type   ON transactions(type);
+CREATE INDEX IF NOT EXISTS ix_tx_broker ON transactions(broker);
 
+-- Keyed on (broker, ticker): the same symbol can exist on two brokers, and markets are
+-- never blended, so each broker's rows stand alone.
 CREATE TABLE IF NOT EXISTS positions (
-  ticker   TEXT PRIMARY KEY,
+  ticker   TEXT NOT NULL,
   quantity REAL NOT NULL,
-  price    REAL NOT NULL,          -- current mark
+  price    REAL NOT NULL,          -- current mark, in the position's own currency
   asset    TEXT DEFAULT 'equity',
-  asof     TEXT NOT NULL
+  asof     TEXT NOT NULL,
+  broker   TEXT NOT NULL DEFAULT 'robinhood',
+  currency TEXT NOT NULL DEFAULT 'USD',
+  exchange TEXT,
+  avg_cost REAL,                   -- broker-reported average cost, when available
+  PRIMARY KEY (broker, ticker)
 );
 
 -- long/EAV format: sector-specific metric sets vary per ticker, so no fixed columns

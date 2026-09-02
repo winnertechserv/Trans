@@ -4,24 +4,31 @@ Reuses the existing xirr.py / portfolio.py rather than reimplementing the solver
 import os, sys, datetime as dt, collections
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import db as D, sectors as S
+import db as D, sectors as S, markets as M
 from portfolio import Transaction, Position, analyse
 
-def _txns(c):
+def _txns(c, market=None):
     out = []
-    for r in c.execute("SELECT date,ticker,type,quantity,price,amount,fees FROM transactions"):
+    br = M.broker_of(market) if market else None
+    q = ("SELECT date,ticker,type,quantity,price,amount,fees FROM transactions"
+         + (" WHERE broker=?" if br else ""))
+    for r in c.execute(q, (br,) if br else ()):
         out.append(Transaction.from_row({
             "date": r["date"], "ticker": r["ticker"], "type": r["type"],
             "quantity": r["quantity"] or "", "price": r["price"] or "",
             "amount": r["amount"] if r["amount"] is not None else "", "fees": r["fees"] or 0}))
     return out
 
-def _positions(c):
+def _positions(c, market=None):
+    br = M.broker_of(market) if market else None
+    q = "SELECT ticker,quantity,price FROM positions" + (" WHERE broker=?" if br else "")
     return {r["ticker"]: Position(r["ticker"], r["quantity"], r["price"])
-            for r in c.execute("SELECT ticker,quantity,price FROM positions")}
+            for r in c.execute(q, (br,) if br else ())}
 
-def results(c, as_of=None):
-    per, overall = analyse(_txns(c), _positions(c), as_of=as_of or dt.date.today())
+def results(c, as_of=None, market=None):
+    per, overall = analyse(_txns(c, market), _positions(c, market),
+                           as_of=as_of or dt.date.today())
+    overall_extra = [0.0, 0.0]   # invested, value from holdings-only rows
     rows = []
     for t in per:
         rows.append({
@@ -35,21 +42,55 @@ def results(c, as_of=None):
             "holding_days": t.holding_days,
             "sector": S.sector_of(t.ticker), "sector_label": S.label(S.sector_of(t.ticker)),
         })
-    tot = overall.market_value or 1
+    # A market can have holdings but no transaction history — Zerodha's API only serves
+    # one day of orders, so until a tradebook CSV is imported there are no cash flows.
+    # Fall back to the broker's own average cost so value and P/L are still real; XIRR
+    # genuinely cannot be computed without dated flows, and says so rather than showing 0.
+    seen = {r["ticker"] for r in rows}
+    br = M.broker_of(market) if market else None
+    q = ("SELECT ticker,quantity,price,avg_cost,asset,exchange FROM positions"
+         + (" WHERE broker=?" if br else ""))
+    for p in c.execute(q, (br,) if br else ()):
+        if p["ticker"] in seen:
+            continue
+        inv = (p["avg_cost"] or 0) * p["quantity"]
+        val = (p["price"] or 0) * p["quantity"]
+        rows.append({
+            "ticker": p["ticker"], "xirr": None,
+            "note": "no transaction history — import a tradebook for XIRR",
+            "invested": inv, "proceeds": 0.0, "dividends": 0.0, "market_value": val,
+            "net_profit": val - inv, "simple_return": (val / inv - 1) if inv else None,
+            "open": True, "quantity": p["quantity"], "n_flows": 0,
+            "first": None, "last": None, "holding_days": None,
+            "asset": p["asset"], "exchange": p["exchange"],
+            "sector": S.sector_of(p["ticker"]),
+            "sector_label": S.label(S.sector_of(p["ticker"])),
+        })
+        ov_extra_inv = inv; ov_extra_val = val
+        overall_extra[0] += inv; overall_extra[1] += val
+
+    tot = sum(r["market_value"] for r in rows) or 1
     for r in rows: r["weight"] = r["market_value"] / tot
-    ov = {"xirr": overall.xirr, "invested": overall.invested, "proceeds": overall.proceeds,
-          "dividends": overall.dividends, "market_value": overall.market_value,
-          "net_profit": overall.net_profit, "simple_return": overall.simple_return,
+    inv_t = overall.invested + overall_extra[0]
+    val_t = overall.market_value + overall_extra[1]
+    net_t = overall.proceeds + overall.dividends + val_t - inv_t
+    ov = {"xirr": overall.xirr, "invested": inv_t, "proceeds": overall.proceeds,
+          "dividends": overall.dividends, "market_value": val_t,
+          "net_profit": net_t,
+          "simple_return": (net_t / inv_t) if inv_t else None,
+          "holdings_only": overall_extra[0] > 0 and overall.n_flows == 0,
           "first": overall.first_activity.isoformat() if overall.first_activity else None,
           "last": overall.last_activity.isoformat() if overall.last_activity else None,
           "n_flows": overall.n_flows}
     return rows, ov
 
-def daily_buys(c, days=30):
+def daily_buys(c, days=30, market=None):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     by_day = collections.OrderedDict()
+    br = M.broker_of(market) if market else None
     for r in c.execute("SELECT date,ticker,type,quantity,price,agent,asset FROM transactions"
-                       " WHERE type='buy' AND date>=? ORDER BY date DESC,ticker", (since,)):
+                       " WHERE type='buy' AND date>=?" + (" AND broker=?" if br else "")
+                       + " ORDER BY date DESC,ticker", (since, br) if br else (since,)):
         amt = (r["quantity"] or 0) * (r["price"] or 0)
         d = by_day.setdefault(r["date"], {"date": r["date"], "total": 0.0, "n": 0, "items": []})
         d["total"] += amt; d["n"] += 1
@@ -58,13 +99,15 @@ def daily_buys(c, days=30):
                            "agent": r["agent"], "asset": r["asset"]})
     return list(by_day.values())
 
-def buy_program(c, days=30):
+def buy_program(c, days=30, market=None):
     """What the recurring engine is actually buying, per ticker per day."""
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     agg = collections.defaultdict(lambda: {"amount": 0.0, "n": 0})
     ndays = set()
+    br = M.broker_of(market) if market else None
     for r in c.execute("SELECT date,ticker,quantity,price,agent FROM transactions"
-                       " WHERE type='buy' AND date>=?", (since,)):
+                       " WHERE type='buy' AND date>=?" + (" AND broker=?" if br else ""),
+                       (since, br) if br else (since,)):
         a = agg[r["ticker"]]; a["amount"] += (r["quantity"] or 0) * (r["price"] or 0); a["n"] += 1
         a["agent"] = r["agent"]; ndays.add(r["date"])
     tot = sum(v["amount"] for v in agg.values()) or 1
@@ -76,12 +119,14 @@ def buy_program(c, days=30):
     return {"days": len(ndays), "total": round(tot, 2),
             "per_day": round(tot / max(len(ndays), 1), 2), "tickers": out}
 
-def dividends(c):
+def dividends(c, market=None):
     by_year = collections.defaultdict(lambda: {"amount": 0.0, "n": 0})
     by_ticker = collections.defaultdict(lambda: {"amount": 0.0, "n": 0})
     by_month = collections.defaultdict(float)
     total = 0.0
-    for r in c.execute("SELECT date,ticker,amount FROM transactions WHERE type='dividend'"):
+    br = M.broker_of(market) if market else None
+    for r in c.execute("SELECT date,ticker,amount FROM transactions WHERE type='dividend'"
+                       + (" AND broker=?" if br else ""), (br,) if br else ()):
         a = r["amount"] or 0; total += a
         by_year[r["date"][:4]]["amount"] += a; by_year[r["date"][:4]]["n"] += 1
         by_ticker[r["ticker"]]["amount"] += a; by_ticker[r["ticker"]]["n"] += 1
@@ -95,8 +140,8 @@ def dividends(c):
       "by_month": [{"month": k, "amount": round(v, 2)} for k, v in sorted(by_month.items())],
     }
 
-def allocation(c):
-    rows, ov = results(c)
+def allocation(c, market=None):
+    rows, ov = results(c, market=market)
     open_rows = [r for r in rows if r["market_value"] > 0]
     tot = sum(r["market_value"] for r in open_rows) or 1
     by_sector = collections.defaultdict(float)
@@ -119,10 +164,12 @@ def allocation(c):
                "tickers": [r["ticker"] for r in tail]},
     }
 
-def contributions(c):
+def contributions(c, market=None):
     """New capital deployed per month — the number that actually drives the portfolio."""
     by_m = collections.defaultdict(float)
-    for r in c.execute("SELECT date,quantity,price FROM transactions WHERE type='buy'"):
+    br = M.broker_of(market) if market else None
+    for r in c.execute("SELECT date,quantity,price FROM transactions WHERE type='buy'"
+                       + (" AND broker=?" if br else ""), (br,) if br else ()):
         by_m[r["date"][:7]] += (r["quantity"] or 0) * (r["price"] or 0)
     ser = [{"month": k, "amount": round(v, 2)} for k, v in sorted(by_m.items())]
     last12 = sum(x["amount"] for x in ser[-12:])
@@ -167,14 +214,18 @@ def costs(c):
     return {"entries": rows, "total_cost": round(tot["s"], 6),
             "total_input": tot["i"], "total_output": tot["o"], "by_source": by_src}
 
-def health(c):
+def health(c, market=None):
+    br = M.broker_of(market) if market else None
     last = c.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 10").fetchone()
     runs = [dict(r) for r in c.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 10")]
-    maxd = c.execute("SELECT MAX(date) d FROM transactions").fetchone()["d"]
+    maxd = c.execute("SELECT MAX(date) d FROM transactions"
+                     + (" WHERE broker=?" if br else ""), (br,) if br else ()).fetchone()["d"]
     stale = (dt.date.today() - dt.date.fromisoformat(maxd)).days if maxd else None
     return {"last_transaction_date": maxd, "days_stale": stale, "runs": runs,
-            "n_transactions": c.execute("SELECT COUNT(*) n FROM transactions").fetchone()["n"],
-            "n_positions": c.execute("SELECT COUNT(*) n FROM positions").fetchone()["n"],
+            "n_transactions": c.execute("SELECT COUNT(*) n FROM transactions"
+                + (" WHERE broker=?" if br else ""), (br,) if br else ()).fetchone()["n"],
+            "n_positions": c.execute("SELECT COUNT(*) n FROM positions"
+                + (" WHERE broker=?" if br else ""), (br,) if br else ()).fetchone()["n"],
             "n_fundamentals": c.execute("SELECT COUNT(DISTINCT ticker) n FROM fundamentals").fetchone()["n"]}
 
 if __name__ == "__main__":

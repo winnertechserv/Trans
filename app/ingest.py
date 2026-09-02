@@ -41,10 +41,50 @@ def upsert_crypto_orders(c, orders):
                   o.get("initiator_type"))
     return n
 
+def upsert_kite_holdings(c, rows, asof=None):
+    """Zerodha holdings. quantity can be 0 while shares are pledged or authorised for
+    sale, so opening_quantity is the honest count of what is owned."""
+    asof = asof or dt.date.today().isoformat()
+    c.execute("DELETE FROM positions WHERE broker='zerodha'")
+    n = 0
+    for r in rows:
+        sym = r.get("tradingsymbol")
+        qty = r.get("opening_quantity")
+        if qty in (None, 0):
+            qty = (r.get("quantity") or 0) + (r.get("used_quantity") or 0)
+        if not sym or not qty:
+            continue
+        c.execute("INSERT INTO positions(ticker,quantity,price,asset,asof,broker,"
+                  "currency,exchange,avg_cost) VALUES(?,?,?,?,?,?,?,?,?)",
+                  (sym, float(qty), float(r.get("last_price") or 0),
+                   _kite_asset(sym), asof, "zerodha", "INR",
+                   r.get("exchange"), float(r.get("average_price") or 0)))
+        n += 1
+    return n
+
+
+def _kite_asset(sym):
+    """Not everything in an Indian demat is a stock — Sovereign Gold Bonds and listed
+    bonds sit alongside equities and must not be sector-classified as companies."""
+    s = (sym or "").upper()
+    if s.startswith("SGB"):
+        return "sgb"
+    if s[:1].isdigit():
+        return "bond"
+    return "equity"
+
+
 def _ins(c, oid, date, ticker, typ, qty, price, amount, fees, asset, agent):
+    return _ins2(c, oid, date, ticker, typ, qty, price, amount, fees, asset, agent,
+                 "robinhood", "USD")
+
+
+def _ins2(c, oid, date, ticker, typ, qty, price, amount, fees, asset, agent,
+          broker, currency):
     cur = c.execute(
-        "INSERT OR IGNORE INTO transactions(order_id,date,ticker,type,quantity,price,amount,fees,asset,agent)"
-        " VALUES(?,?,?,?,?,?,?,?,?,?)", (oid, date, ticker, typ, qty, price, amount, fees, asset, agent))
+        "INSERT OR IGNORE INTO transactions(order_id,date,ticker,type,quantity,price,"
+        "amount,fees,asset,agent,broker,currency) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (oid, date, ticker, typ, qty, price, amount, fees, asset, agent, broker, currency))
     return cur.rowcount
 
 def _asset_of(ticker, explicit=None):
@@ -97,6 +137,7 @@ def upsert_quotes(c, rows, date=None):
 
 HANDLERS = {
     "orders_equity": upsert_equity_orders, "orders_crypto": upsert_crypto_orders,
+    "kite_holdings": upsert_kite_holdings,
     "positions": upsert_positions, "fundamentals": upsert_fundamentals, "quotes": upsert_quotes,
 }
 
