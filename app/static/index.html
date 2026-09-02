@@ -197,17 +197,33 @@ async function loadMarket(){
   STATE.ov=await get('/api/overview?market='+(STATE.market||'us'));
   MKT=STATE.ov.market||MKT;
   const o=STATE.ov.overall,h=STATE.ov.health;
+  // Money still in, money already out, and what each earned — kept apart. A single
+  // "Invested" figure reads as a collapse the moment you have sold anything: India shows
+  // 1.92cr bought against 41L held, and the 1.68cr that came back out has to be visible
+  // for the rest to make sense. Realised + unrealised + dividends reconstructs Net
+  // gain/loss exactly, which is the arithmetic check that nothing is double counted.
+  const px=(v)=>v==null?'<span class="mut" style="font-size:14px">n/a</span>':pct(v);
+  const gain=(v)=>`<span class="${sign(v)}">${usd(v)}</span>`;
   $('#kpis').innerHTML=[
-    ['Value',usd(o.market_value)],
-    ['XIRR', o.xirr==null?'<span class="mut" style="font-size:14px">no history</span>':pct(o.xirr)],
-    ['Net P/L',usd(o.net_profit)],
-    // "Invested" used to mean every rupee ever spent buying, which reads as a disaster
-    // next to current value the moment you have sold anything: India showed 1.92cr
-    // invested against 41L held, having sold 1.68cr. Net invested is what is still in.
-    ['Net invested',usd(o.invested-o.proceeds),
-     `${usd(o.invested)} bought over all time, less ${usd(o.proceeds)} sold`],
-    ['Sold',usd(o.proceeds),'Cash returned by sales — already out of the market'],
-    ['Dividends',usd(o.dividends,2)],
+    ['Current value',usd(o.market_value),'Shares held now × the latest price'],
+    ['Currently invested',usd(o.cost_basis),
+     'What the shares you still hold actually cost. Zerodha reports a split-adjusted '
+     +'average; for Robinhood it is weighted-average cost off the order history.'],
+    ['Unrealized gain',gain(o.unrealized),'Current value less what those shares cost — on paper, not banked'],
+    ['Booked P/L',gain(o.realized),
+     'Profit or loss actually banked on everything sold: Total sold − (Total invested − Currently invested)'],
+    ['Total invested',usd(o.invested),'Every unit of currency ever spent buying. Not reduced by sales.'],
+    ['Total sold',usd(o.proceeds),'Lifetime cash out of sales'],
+    ['Net gain/loss',gain(o.net_profit),'Booked + Unrealized + Dividends'],
+    ['Dividends',usd(o.dividends,2),
+     'US: reconstructed from DRIP reinvestment orders, so cash dividends are invisible. '
+     +'India: 0 because the Zerodha tradebook carries no dividend rows.'],
+    ['XIRR on open',px(o.xirr_open),
+     'Annualised money-weighted return counting only positions you still hold — how the '
+     +'things you own are doing, with closed round-trips excluded.'],
+    ['Net XIRR',px(o.xirr),
+     'Annualised money-weighted return over everything ever traded, closed positions '
+     +'included. Short round-trips distort it upward because the rate is annualised.'],
     ['Data through',h.last_transaction_date
       ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
       : `<span class="mut" style="font-size:14px">holdings only</span>`]
@@ -474,12 +490,17 @@ function contribSeries(ser){
     cut=d.toISOString().slice(0,7);}
   const agg=new Map();
   for(const x of ser){ if(x.month<cut) continue;
-    const k=contribBucket(x.month,contribPeriod); agg.set(k,(agg.get(k)||0)+x.amount); }
-  return [...agg].map(([label,amount])=>({label,amount})).sort((a,b)=>a.label<b.label?-1:1);
+    const k=contribBucket(x.month,contribPeriod);
+    const a=agg.get(k)||{label:k,bought:0,sold:0,realized:0};
+    a.bought+=x.bought; a.sold+=x.sold; a.realized+=x.realized; agg.set(k,a); }
+  return [...agg.values()].sort((a,b)=>a.label<b.label?-1:1);
 }
 function contribCard(cn){
   const cs=contribSeries(cn.series);
-  const cm=Math.max(...cs.map(x=>x.amount),0)||1;
+  const cm=Math.max(...cs.map(x=>x.bought),0)||1;
+  const tot=cs.reduce((a,x)=>({bought:a.bought+x.bought,sold:a.sold+x.sold,
+    realized:a.realized+x.realized}),{bought:0,sold:0,realized:0});
+  const skip=(cn.realized_skipped||[]).length;
   const per=[['month','Monthly'],['quarter','Quarterly'],['year','Yearly']];
   const spans=[[1,'1y'],[3,'3y'],[5,'5y'],[10,'10y'],['all','All']];
   return `<h2>New capital deployed</h2>
@@ -492,13 +513,25 @@ function contribCard(cn){
       `<button data-v="${k}" aria-pressed="${String(k)===String(contribYears)}">${l}</button>`).join('')}</span>
    </div>
    ${cs.length?`<div class="wrap"><table><thead><tr><th>Period</th><th></th>
-     <th>Bought</th></tr></thead><tbody>${cs.map(x=>`<tr><td>${x.label}</td>
-     <td style="width:60%"><div class="bar"><i style="width:${x.amount/cm*100}%"></i></div></td>
-     <td>${usd(x.amount)}</td></tr>`).join('')}</tbody></table></div>
-    <p class="mut" style="font-size:11px;margin-top:8px">${cs.length} periods ·
-     ${usd(cs.reduce((s,x)=>s+x.amount,0))} bought in this window ·
-     trailing 12 months <b>${usd(cn.trailing_12m)}</b>. Buys only — sales are not netted off.</p>`
-    :`<p class="mut">No buys in this window.</p>`}`;
+     <th>Bought</th><th>Sold</th><th>Net cash</th><th>Booked P/L</th></tr></thead>
+    <tbody>${cs.map(x=>`<tr><td>${x.label}</td>
+     <td style="width:34%"><div class="bar"><i style="width:${x.bought/cm*100}%"></i></div></td>
+     <td>${usd(x.bought)}</td><td class="mut">${usd(x.sold)}</td>
+     <td class="${sign(x.sold-x.bought)}">${usd(x.sold-x.bought)}</td>
+     <td class="${sign(x.realized)}">${x.realized?usd(x.realized):'—'}</td></tr>`).join('')}
+    </tbody><tfoot><tr><th>Total</th><th></th>
+     <th>${usd(tot.bought)}</th><th class="mut">${usd(tot.sold)}</th>
+     <th class="${sign(tot.sold-tot.bought)}">${usd(tot.sold-tot.bought)}</th>
+     <th class="${sign(tot.realized)}">${usd(tot.realized)}</th></tr></tfoot></table></div>
+    <p class="mut" style="font-size:11px;margin-top:8px">
+     <b>Net cash</b> is sold minus bought — negative means you put money in that period.
+     <b>Booked P/L</b> is profit actually banked on the shares sold, using weighted-average
+     cost.${skip?` It skips ${skip} ticker${skip>1?'s':''} that sold more shares than the
+     order history shows them buying — that is what a split looks like, and a per-share
+     average there would invent a loss. Those sales still count in Sold, so this column
+     totals less than the Booked P/L in the header.`:''}
+     Trailing 12 months bought <b>${usd(cn.trailing_12m)}</b>.</p>`
+    :`<p class="mut">No activity in this window.</p>`}`;
 }
 
 async function analysis(){

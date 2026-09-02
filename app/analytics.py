@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db as D, sectors as S, markets as M
 from portfolio import Transaction, Position, analyse
+import portfolio as P
 
 def _txns(c, market=None):
     out = []
@@ -24,6 +25,58 @@ def _positions(c, market=None):
     q = "SELECT ticker,quantity,price FROM positions" + (" WHERE broker=?" if br else "")
     return {r["ticker"]: Position(r["ticker"], r["quantity"], r["price"])
             for r in c.execute(q, (br,) if br else ())}
+
+def cost_basis(c, market=None):
+    """{ticker: cost of the shares still held}, plus the tickers where it is a guess.
+
+    Two sources, because neither broker gives both halves. Zerodha reports an average
+    cost per holding and it is split-adjusted, so it is authoritative. Robinhood reports
+    none, but its order history is complete and no US ticker ever sells more shares than
+    it bought, so weighted-average cost off the transaction stream is exact there.
+
+    Splits are why the stream cannot be trusted on the India side: order history keeps
+    pre-split quantities while sells are post-split, so 39 of 356 tickers sell more
+    shares than they appear to own and their per-share average is nonsense. Those are
+    exactly the ones Zerodha's own average covers.
+    """
+    br = M.broker_of(market) if market else None
+    have = {}
+    q = ("SELECT ticker,quantity,avg_cost FROM positions WHERE avg_cost IS NOT NULL"
+         " AND avg_cost>0" + (" AND broker=?" if br else ""))
+    for r in c.execute(q, (br,) if br else ()):
+        have[r["ticker"]] = r["quantity"] * r["avg_cost"]
+
+    held = {r["ticker"]: r["quantity"] for r in c.execute(
+        "SELECT ticker,quantity FROM positions" + (" WHERE broker=?" if br else ""),
+        (br,) if br else ())}
+    run = collections.defaultdict(lambda: [0.0, 0.0])   # ticker -> [qty, cost]
+    broken = set()
+    tq = ("SELECT ticker,type,quantity,price FROM transactions WHERE type IN ('buy','sell')"
+          + (" AND broker=?" if br else "") + " ORDER BY date,id")
+    for r in c.execute(tq, (br,) if br else ()):
+        st = run[r["ticker"]]
+        q_, p_ = r["quantity"] or 0, r["price"] or 0
+        if r["type"] == "buy":
+            st[0] += q_; st[1] += q_ * p_
+        else:
+            if q_ > st[0] + 1e-9:
+                broken.add(r["ticker"]); st[0] = 0.0; st[1] = 0.0; continue
+            avg = st[1] / st[0] if st[0] else 0.0
+            st[0] -= q_; st[1] -= q_ * avg
+
+    out, guessed = {}, []
+    for t, qty in held.items():
+        if abs(qty) < 1e-9:
+            continue
+        if t in have:
+            out[t] = have[t]
+        elif t not in broken and run[t][0] > 1e-9:
+            out[t] = run[t][1]
+        else:
+            out[t] = None          # no broker average and no usable stream
+            guessed.append(t)
+    return out, guessed, broken
+
 
 def company_names(c):
     """{ticker: company name}. Stored as a plain `name` metric on fundamentals, because
@@ -98,22 +151,59 @@ def results(c, as_of=None, market=None):
         overall_extra[0] += inv; overall_extra[1] += val
 
     nm = company_names(c)
+    basis, no_basis, _broken = cost_basis(c, market)
     tot = sum(r["market_value"] for r in rows) or 1
     for r in rows:
         r["weight"] = r["market_value"] / tot
         r["name"] = nm.get(r["ticker"])
+        b = basis.get(r["ticker"])
+        r["cost_basis"] = b
+        r["unrealized"] = (r["market_value"] - b) if b is not None else None
+    # Realised vs unrealised. Cost of the shares still held comes from cost_basis(); the
+    # cost of everything already sold is then whatever is left of lifetime spend, so
+    # realised = sold - (invested - still held). The two halves plus dividends reconstruct
+    # net profit exactly, which is the check that this is not double counting.
+    held_cost = sum(v for v in basis.values() if v is not None)
+    xirr_open, open_note = _xirr_open(c, market, as_of or dt.date.today())
+
     inv_t = overall.invested + overall_extra[0]
     val_t = overall.market_value + overall_extra[1]
     net_t = overall.proceeds + overall.dividends + val_t - inv_t
+    realized_t = overall.proceeds - inv_t + held_cost
     ov = {"xirr": overall.xirr, "invested": inv_t, "proceeds": overall.proceeds,
           "dividends": overall.dividends, "market_value": val_t,
           "net_profit": net_t,
+          "cost_basis": held_cost,                 # what the shares still held cost
+          "unrealized": val_t - held_cost,         # paper gain on those
+          "realized": realized_t,                  # booked, from everything sold
+          "xirr_open": xirr_open, "xirr_open_note": open_note,
+          "no_basis": no_basis,
           "simple_return": (net_t / inv_t) if inv_t else None,
           "holdings_only": overall_extra[0] > 0 and overall.n_flows == 0,
           "first": overall.first_activity.isoformat() if overall.first_activity else None,
           "last": overall.last_activity.isoformat() if overall.last_activity else None,
           "n_flows": overall.n_flows}
     return rows, ov
+
+def _xirr_open(c, market, as_of):
+    """XIRR over positions still held — the rate on money actually still in the market.
+
+    Closed round-trips are excluded entirely, which is the point: the headline XIRR is
+    dominated by whatever was traded years ago, and it answers a different question from
+    "how are the things I own doing".
+    """
+    br = M.broker_of(market) if market else None
+    open_t = {r["ticker"] for r in c.execute(
+        "SELECT ticker FROM positions WHERE quantity>0" + (" AND broker=?" if br else ""),
+        (br,) if br else ())}
+    if not open_t:
+        return None, "no open positions"
+    txns = [t for t in _txns(c, market) if t.ticker in open_t]
+    if not txns:
+        return None, "open positions have no transaction history"
+    per, ov = P.analyse(txns, _positions(c, market), as_of=as_of)
+    return ov.xirr, ov.note
+
 
 def daily_buys(c, days=30, market=None):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
@@ -196,15 +286,61 @@ def allocation(c, market=None):
     }
 
 def contributions(c, market=None):
-    """New capital deployed per month — the number that actually drives the portfolio."""
-    by_m = collections.defaultdict(float)
+    """Bought, sold and booked P/L per month.
+
+    Realised P/L uses weighted-average cost walked forward over the order stream: on a
+    sale, profit is proceeds less the running average cost of the shares going out. That
+    is the standard method and it is exact wherever the stream is complete.
+
+    It is NOT computed for tickers that sell more shares than they appear to own, which
+    is what a split looks like in order history — the per-share average there is
+    meaningless and would invent a loss. Those tickers still contribute to Bought and
+    Sold, so the Booked column deliberately sums to less than the headline realised
+    figure, and the caller is told how many were skipped rather than the gap being
+    silent.
+    """
     br = M.broker_of(market) if market else None
-    for r in c.execute("SELECT date,quantity,price FROM transactions WHERE type='buy'"
-                       + (" AND broker=?" if br else ""), (br,) if br else ()):
-        by_m[r["date"][:7]] += (r["quantity"] or 0) * (r["price"] or 0)
-    ser = [{"month": k, "amount": round(v, 2)} for k, v in sorted(by_m.items())]
-    last12 = sum(x["amount"] for x in ser[-12:])
-    return {"series": ser, "trailing_12m": round(last12, 2), "run_rate": round(last12, 2)}
+    rows = list(c.execute(
+        "SELECT date,ticker,type,quantity,price FROM transactions"
+        " WHERE type IN ('buy','sell')" + (" AND broker=?" if br else "")
+        + " ORDER BY date,id", (br,) if br else ()))
+
+    broken = set()
+    run = collections.defaultdict(lambda: [0.0, 0.0])
+    for r in rows:                                   # first pass: find the unusable ones
+        st = run[r["ticker"]]
+        q = r["quantity"] or 0
+        if r["type"] == "buy":
+            st[0] += q; st[1] += q * (r["price"] or 0)
+        elif q > st[0] + 1e-9:
+            broken.add(r["ticker"]); st[0] = 0.0; st[1] = 0.0
+        else:
+            avg = st[1] / st[0] if st[0] else 0.0
+            st[0] -= q; st[1] -= q * avg
+
+    by_m = collections.defaultdict(lambda: {"bought": 0.0, "sold": 0.0, "realized": 0.0})
+    run = collections.defaultdict(lambda: [0.0, 0.0])
+    for r in rows:
+        m = r["date"][:7]
+        q, px = r["quantity"] or 0, r["price"] or 0
+        st = run[r["ticker"]]
+        if r["type"] == "buy":
+            by_m[m]["bought"] += q * px
+            st[0] += q; st[1] += q * px
+        else:
+            by_m[m]["sold"] += q * px
+            if r["ticker"] not in broken and q <= st[0] + 1e-9:
+                avg = st[1] / st[0] if st[0] else 0.0
+                by_m[m]["realized"] += q * px - q * avg
+                st[0] -= q; st[1] -= q * avg
+
+    ser = [{"month": k, "amount": round(v["bought"], 2), "bought": round(v["bought"], 2),
+            "sold": round(v["sold"], 2), "realized": round(v["realized"], 2)}
+           for k, v in sorted(by_m.items())]
+    last12 = sum(x["bought"] for x in ser[-12:])
+    return {"series": ser, "trailing_12m": round(last12, 2), "run_rate": round(last12, 2),
+            "realized_total": round(sum(x["realized"] for x in ser), 2),
+            "realized_skipped": sorted(broken)}
 
 def fundamentals(c, ticker):
     sec = S.sector_of(ticker)
