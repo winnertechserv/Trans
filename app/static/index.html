@@ -41,6 +41,13 @@ tbody tr:hover{background:var(--chip)}
 /* Bound the name itself rather than every first column in the app — report tables and
    the fundamentals grid share that selector and must not be squeezed. */
 .fname{display:block;font-weight:600;line-height:1.3;cursor:help;max-width:260px}
+/* Holdings carries twelve columns, so a 50-character fund name pushes the numbers off
+   screen. Wrap it tighter here and tighten the cell padding; the numeric columns keep
+   tabular figures so they still line up. */
+.dense .fname{max-width:170px;font-size:12px}
+.dense .cname{max-width:170px}
+.dense th,.dense td{padding:6px 8px;font-size:12px}
+.dense td:first-child,.dense th:first-child{position:sticky;left:0;background:var(--panel)}
 .chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
   font-size:10px;cursor:help}
 .wrap{overflow-x:auto}
@@ -147,6 +154,20 @@ const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/js
   body:JSON.stringify(b||{})}).then(r=>r.json());
 let STATE={};
 
+// Every control the user can change is remembered, so coming back to a screen does not
+// mean setting it up again. localStorage is per browser and per origin, which is exactly
+// the right scope for "how I like to look at my own dashboard"; it is wrapped because a
+// private window or blocked site data makes the accessor itself throw, and a dashboard
+// must not fail to render over a saved sort order.
+const PREFS_KEY='trans.prefs.v1';
+let PREFS={};
+try{ PREFS=JSON.parse(localStorage.getItem(PREFS_KEY)||'{}')||{}; }catch(e){ PREFS={}; }
+function pref(k,dflt){ return PREFS[k]===undefined?dflt:PREFS[k]; }
+function setPref(k,v){
+  PREFS[k]=v;
+  try{ localStorage.setItem(PREFS_KEY,JSON.stringify(PREFS)); }catch(e){}
+}
+
 // [key, label, url path]. Overview lives at / so the root is not a redirect.
 const TABS=[['overview','Overview','/'],['holdings','Holdings','/holdings'],
  ['buys','Daily buys','/daily-buys'],['div','Dividends','/dividends'],
@@ -198,7 +219,7 @@ async function applyRoute(r,{push=false,replace=false}={}){
 }
 
 function go(t,ticker){ applyRoute({market:STATE.market,tab:t,ticker:ticker||null},{push:true}); }
-function goMarket(m){ applyRoute({market:m,tab:tab,ticker:null},{push:true}); }
+function goMarket(m){ setPref('market',m); applyRoute({market:m,tab:tab,ticker:null},{push:true}); }
 
 $('#nav').innerHTML=TABS.map(([k,l,p])=>
   `<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
@@ -249,7 +270,7 @@ async function loadMarket(){
 
 async function boot(){
   const mi=await get('/api/markets');
-  STATE.market=routeFrom(location.pathname).market||mi.default;
+  STATE.market=routeFrom(location.pathname).market||pref('market',null)||mi.default;
   $('#mkt').innerHTML=mi.markets.map(m=>
     `<button data-m="${m.key}" aria-pressed="${m.key===STATE.market}"
       title="${m.currency}">${m.flag} ${m.label}</button>`).join('');
@@ -281,7 +302,7 @@ function overview(){
   <div class="grid wide">
    <div class="card"><h2>Allocation</h2>
     <div class="row">
-     <input id="aq" placeholder="Search ticker or sector" value="${allocQ}" style="flex:1;min-width:150px">
+     <input id="aq" placeholder="Search name, ticker or category" value="${allocQ}" style="flex:1;min-width:150px">
      <select id="asec">${['',...[...new Set(open.map(p=>p.sector_label))].sort()]
        .map(v=>`<option value="${v}"${v===allocSec?' selected':''}>${v||'All categories'}</option>`).join('')}</select>
     </div>
@@ -301,8 +322,13 @@ function overview(){
 // Allocation is the list people actually hunt in — "how much Pharma do I hold", "where is
 // TITAN" — so it carries its own search, category filter and sortable headers. State is
 // module-level so it survives the redraws that filtering causes.
-let allocQ='', allocSec='', allocKey='market_value', allocDir=-1;
+let allocQ=pref('allocQ',''), allocSec=pref('allocSec',''),
+    allocKey=pref('allocKey','market_value'), allocDir=pref('allocDir',-1);
 function allocRows(open){
+  // A remembered category can belong to the other market — "Mutual fund" does not exist
+  // on the US side — and would silently empty the table. Drop it rather than show
+  // nothing and let the user wonder where their holdings went.
+  if(allocSec && !open.some(p=>p.sector_label===allocSec)) allocSec='';
   const q=allocQ.trim().toUpperCase();
   return open.filter(p=>(!allocSec||p.sector_label===allocSec)
       && (!q||p.ticker.toUpperCase().includes(q)||(p.name||'').toUpperCase().includes(q)
@@ -345,10 +371,11 @@ function wireAlloc(open){
     const k=e.target.dataset.ak; if(!k)return;
     if(k===allocKey)allocDir*=-1;
     else{allocKey=k; allocDir=(k==='ticker'||k==='sector_label')?1:-1;}
+    setPref('allocKey',allocKey); setPref('allocDir',allocDir);
     redraw();});};
   const redraw=()=>{$('#atab').innerHTML=allocTable(open); bindSort();};
-  $('#aq').oninput=e=>{allocQ=e.target.value; redraw();};      // input sits outside #atab,
-  $('#asec').onchange=e=>{allocSec=e.target.value; redraw();};  // so focus survives redraw
+  $('#aq').oninput=e=>{allocQ=e.target.value; setPref('allocQ',allocQ); redraw();};
+  $('#asec').onchange=e=>{allocSec=e.target.value; setPref('allocSec',allocSec); redraw();};
   bindSort();
 }
 
@@ -431,7 +458,7 @@ function ih(k){
   const t=INFO[k]; return t?` <span class="ih" title="${t.replace(/"/g,'&quot;')}">i</span>`:'';
 }
 
-let sortKey='market_value',sortDir=-1;
+let sortKey=pref('sortKey','market_value'), sortDir=pref('sortDir',-1);
 function holdings(){
   const r=[...STATE.ov.results].sort((a,b)=>{
     const A=a[sortKey],B=b[sortKey];
@@ -445,7 +472,7 @@ function holdings(){
     ['proceeds','Sold'],['market_value','Value'],['dividends','Divs'],['net_profit','Net P/L'],
     ['days_held','Held'],['n_flows','Flows']];
   $('#main').innerHTML=`<div class="card"><h2>All holdings — click a header to sort</h2>
-   <div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
+   <div class="wrap"><table class="dense"><thead><tr>${cols.map(([k,l])=>
     `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
      <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
@@ -468,12 +495,13 @@ function holdings(){
      the order history) so the elapsed span is shown instead.</p>
    </div></div>`;
   $('#main').querySelector('thead').onclick=e=>{const k=e.target.dataset.k; if(!k)return;
-    if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=-1;} holdings();};
+    if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=-1;}
+    setPref('sortKey',sortKey); setPref('sortDir',sortDir); holdings();};
 }
 
 async function buys(){
   $('#main').innerHTML='<div class="card">loading…</div>';
-  const days=STATE.buyDays||30;
+  const days=STATE.buyDays||pref('buyDays',30);
   const [d,p]=await Promise.all([get('/api/daily-buys?days='+days+'&market='+STATE.market),get('/api/buy-program?days='+days+'&market='+STATE.market)]);
   $('#main').innerHTML=`
   <div class="card"><h2>Recurring programme — last ${p.days} trading days</h2>
@@ -492,7 +520,7 @@ async function buys(){
      <span>${usd(x.total,2)} · ${x.n} orders</span></div>
      <div>${x.items.map(i=>`<span class="tick"><b>${i.ticker}</b> ${usd(i.amount,2)}</span>`).join('')}</div>
    </div>`).join('')||'<p class="mut">No buys in range.</p>'}</div>`;
-  $('#dsel').onchange=e=>{STATE.buyDays=+e.target.value;buys();};
+  $('#dsel').onchange=e=>{STATE.buyDays=+e.target.value;setPref('buyDays',STATE.buyDays);buys();};
 }
 
 async function divs(){
@@ -513,7 +541,8 @@ async function divs(){
 // The monthly series is the raw material; quarters and years are rolled up in the
 // browser rather than round-tripping, because /api/contributions already returns every
 // month there has ever been and the aggregation is a group-by.
-let contribPeriod='month', contribYears=2, contribAsset='all';
+let contribPeriod=pref('contribPeriod','month'), contribYears=pref('contribYears',2),
+    contribAsset=pref('contribAsset','all');
 const ASSET_LABEL={equity:'Stocks',mf:'Mutual funds',crypto:'Crypto',
                    sgb:'Gold bonds',bond:'Bonds'};
 function contribBucket(m,p){
@@ -534,6 +563,8 @@ function contribSeries(ser){
   return [...agg.values()].sort((a,b)=>a.label<b.label?-1:1);
 }
 function contribCard(cn){
+  // Same for a remembered asset filter: India has mutual funds, the US has crypto.
+  if(contribAsset!=='all' && !(cn.assets||[]).includes(contribAsset)) contribAsset='all';
   const cs=contribSeries(cn.series);
   const cm=Math.max(...cs.map(x=>x.bought),0)||1;
   const tot=cs.reduce((a,x)=>({bought:a.bought+x.bought,sold:a.sold+x.sold,
@@ -598,11 +629,12 @@ async function analysis(){
    <div class="card" id="ccard">${contribCard(cn)}</div>`;
   const wire=()=>{
     $('#cper').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
-      contribPeriod=v; $('#ccard').innerHTML=contribCard(cn); wire();};
+      contribPeriod=v; setPref('contribPeriod',v); $('#ccard').innerHTML=contribCard(cn); wire();};
     $('#cspan').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
-      contribYears=v==='all'?'all':+v; $('#ccard').innerHTML=contribCard(cn); wire();};
+      contribYears=v==='all'?'all':+v; setPref('contribYears',contribYears);
+      $('#ccard').innerHTML=contribCard(cn); wire();};
     const ca=$('#casset'); if(ca) ca.onclick=e=>{const v=e.target.dataset.v; if(!v)return;
-      contribAsset=v; $('#ccard').innerHTML=contribCard(cn); wire();};
+      contribAsset=v; setPref('contribAsset',v); $('#ccard').innerHTML=contribCard(cn); wire();};
   };
   wire();
 }
@@ -617,6 +649,11 @@ async function fund(){
   // Up to three side by side. Sector decides the metric set, so comparing across sectors
   // gives a sparse table on purpose — a bank has no P/E row to line up against a chipmaker,
   // and filling one in would be worse than leaving the gap visible.
+  if(STATE.fundT2===undefined) STATE.fundT2=pref('fundT2','');
+  if(STATE.fundT3===undefined) STATE.fundT3=pref('fundT3','');
+  // A remembered comparison ticker you no longer hold would 404 the fetch.
+  if(STATE.fundT2 && !opts.includes(STATE.fundT2)) STATE.fundT2='';
+  if(STATE.fundT3 && !opts.includes(STATE.fundT3)) STATE.fundT3='';
   const picks=[tick,STATE.fundT2||'',STATE.fundT3||''].filter(Boolean);
   const fs=await Promise.all(picks.map(t=>get('/api/fundamentals/'+t)));
   const fmtv=(m)=>{if(!m||m.value==null)return `<span class="miss">not loaded</span>`;
@@ -663,8 +700,8 @@ async function fund(){
      fundamentals sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>
    <div id="rep"></div>`;
   $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;go('fund',e.target.value);};
-  $('#tsel2').onchange=e=>{STATE.fundT2=e.target.value;fund();};
-  $('#tsel3').onchange=e=>{STATE.fundT3=e.target.value;fund();};
+  $('#tsel2').onchange=e=>{STATE.fundT2=e.target.value;setPref('fundT2',STATE.fundT2);fund();};
+  $('#tsel3').onchange=e=>{STATE.fundT3=e.target.value;setPref('fundT3',STATE.fundT3);fund();};
   // The research report for this ticker, if one has been run. Only in single view — three
   // reports side by side would not be readable.
   if(!cmp && STATE.fundHideRep!==tick) showReport(tick,{scroll:false,tab:'fund'});
