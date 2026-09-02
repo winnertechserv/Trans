@@ -44,10 +44,24 @@
       "quick_think_llm": "qwen3:8b"
     },
     "anthropic": {
-      "deep_think_llm": "claude-sonnet-5",
+      "deep_think_llm": "claude-haiku-4-5-20251001",
       "quick_think_llm": "claude-haiku-4-5-20251001",
       "require_consent": true,
-      "max_cost_usd": 2.0
+      "max_cost_usd": 2.0,
+      "models": [
+        {
+          "id": "claude-haiku-4-5-20251001",
+          "label": "Haiku 4.5 \u2014 cheapest, good for testing"
+        },
+        {
+          "id": "claude-sonnet-5",
+          "label": "Sonnet 5 \u2014 balanced"
+        },
+        {
+          "id": "claude-opus-5",
+          "label": "Opus 5 \u2014 most capable, most expensive"
+        }
+      ]
     }
   }
 }

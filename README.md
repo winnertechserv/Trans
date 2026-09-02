@@ -258,9 +258,9 @@ Trans can run **[TradingAgents](https://github.com/TauricResearch/TradingAgents)
 holding — five analysts, a bull/bear debate, a trader and a risk panel — and store the
 report in the Research tab.
 
-It is off by default and installs nothing on your behalf. TradingAgents has no license
-and needs 22 pip packages, so it is never bundled: you clone it yourself and Trans talks
-to it by subprocess, staying stdlib-only. Pick a backend — **local Ollama** (free,
+It is off by default and installs nothing on your behalf. TradingAgents needs 22 pip
+packages, so it is never bundled — you clone it yourself and Trans talks to it by
+subprocess, staying stdlib-only. Pick a backend — **local Ollama** (free,
 private, weaker) or the **Anthropic API** (paid, better, with a consent prompt and cost
 logging before every run).
 

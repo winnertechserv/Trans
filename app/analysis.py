@@ -1,9 +1,11 @@
 """Optional bridge to TauricResearch/TradingAgents.
 
-Trans is stdlib-only; TradingAgents needs ~22 pip packages and has no license, so it is
-never imported, vendored or redistributed here. We spawn *our* runner script
-(tools/ta_runner.py) with *their* venv interpreter, and read back a tree of markdown.
-If TradingAgents is absent, everything in this module degrades to a clear message.
+Trans is stdlib-only; TradingAgents needs ~22 pip packages (langchain, langgraph,
+pandas, yfinance...), so it is never imported or vendored here — doing so would end the
+"works with just python3" property for a feature most users never enable. We spawn *our*
+runner script (tools/ta_runner.py) with *their* venv interpreter and read back a tree of
+markdown. TradingAgents is Apache 2.0, so this separation is an engineering choice, not a
+licensing one. If TradingAgents is absent, this module degrades to a clear message.
 
 Reports are stored in the `ai_notes` table; every run is written to `token_ledger` —
 free for local Ollama, with actual token counts and cost for the paid backend.
@@ -16,21 +18,47 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNNER = os.path.join(ROOT, "tools", "ta_runner.py")
 
 # section file -> (kind, human label, display order)
+# (directory-suffix, filename) -> kind, label, display order.
+# write_report_tree() numbers its directories (1_analysts, 2_research, 3_trading,
+# 4_risk, 5_portfolio), so match on the suffix after the number rather than a fixed
+# path — an earlier version hardcoded unnumbered names and silently ingested nothing.
 SECTIONS = [
-    ("portfolio/decision.md",   "decision",      "Final decision",        0),
-    ("trading/trader.md",       "trader",        "Trader plan",           1),
-    ("research/manager.md",     "research_mgr",  "Research manager",      2),
-    ("research/bull.md",        "bull",          "Bull case",             3),
-    ("research/bear.md",        "bear",          "Bear case",             4),
-    ("analysts/fundamentals.md","fundamentals",  "Fundamentals analyst",  5),
-    ("analysts/market.md",      "market",        "Market analyst",        6),
-    ("analysts/news.md",        "news",          "News analyst",          7),
-    ("analysts/sentiment.md",   "sentiment",     "Sentiment analyst",     8),
-    ("risk/aggressive.md",      "risk_aggr",     "Risk — aggressive",     9),
-    ("risk/neutral.md",         "risk_neutral",  "Risk — neutral",       10),
-    ("risk/conservative.md",    "risk_cons",     "Risk — conservative",  11),
+    ("portfolio", "decision.md",     "decision",      "Final decision",        0),
+    ("trading",   "trader.md",       "trader",        "Trader plan",           1),
+    ("research",  "manager.md",      "research_mgr",  "Research manager",      2),
+    ("research",  "bull.md",         "bull",          "Bull case",             3),
+    ("research",  "bear.md",         "bear",          "Bear case",             4),
+    ("analysts",  "fundamentals.md", "fundamentals",  "Fundamentals analyst",  5),
+    ("analysts",  "market.md",       "market",        "Market analyst",        6),
+    ("analysts",  "news.md",         "news",          "News analyst",          7),
+    ("analysts",  "sentiment.md",    "sentiment",     "Sentiment analyst",     8),
+    ("risk",      "aggressive.md",   "risk_aggr",     "Risk — aggressive",     9),
+    ("risk",      "neutral.md",      "risk_neutral",  "Risk — neutral",       10),
+    ("risk",      "conservative.md", "risk_cons",     "Risk — conservative",  11),
 ]
-LABEL = {k: (lbl, order) for _, k, lbl, order in SECTIONS}
+
+def _find_section(outdir, dirsuffix, filename):
+    """Locate <outdir>/<anything ending in dirsuffix>/<filename>."""
+    for d in sorted(glob.glob(os.path.join(outdir, "*"))):
+        if os.path.isdir(d) and os.path.basename(d).endswith(dirsuffix):
+            p = os.path.join(d, filename)
+            if os.path.exists(p):
+                return p
+    p = os.path.join(outdir, dirsuffix, filename)   # unnumbered fallback
+    return p if os.path.exists(p) else None
+LABEL = {k: (lbl, order) for _, _, k, lbl, order in SECTIONS}
+
+# LangGraph node name -> what to show a human
+AGENT_LABEL = {
+    "market_analyst": "Market analyst", "fundamentals_analyst": "Fundamentals analyst",
+    "news_analyst": "News analyst", "sentiment_analyst": "Sentiment analyst",
+    "social_media_analyst": "Social analyst",
+    "bull_researcher": "Bull researcher", "bear_researcher": "Bear researcher",
+    "research_manager": "Research manager", "trader": "Trader",
+    "risky_analyst": "Risk — aggressive", "neutral_analyst": "Risk — neutral",
+    "safe_analyst": "Risk — conservative", "risk_judge": "Risk judge",
+    "unattributed": "Unattributed",
+}
 
 _jobs = {}
 _lock = threading.Lock()
@@ -54,10 +82,12 @@ _AGENTS = 9
 _CTX_LOW, _CTX_HIGH = 3000, 9000
 _OUT_LOW, _OUT_HIGH = 700, 2000
 
-def estimate(ticker=None):
+def estimate(ticker=None, model=None):
     cfg = C.tradingagents()
     b = cfg.get("backend", "ollama")
     deep, quick = C.ta_models(cfg)
+    if model and b != "ollama":
+        deep = model
     if b == "ollama":
         return {"paid": False, "backend": b, "low": 0.0, "high": 0.0,
                 "deep_think_llm": deep, "quick_think_llm": quick, "verified": True,
@@ -69,6 +99,7 @@ def estimate(ticker=None):
     hi = CO.estimate(deep, _CTX_HIGH * calls, _OUT_HIGH * calls)
     p = CO.pricing()
     return {"paid": True, "backend": b, "ticker": ticker,
+            "models": cfg.get("anthropic", {}).get("models", []),
             "low": lo.get("cost_usd"), "high": hi.get("cost_usd"),
             "deep_think_llm": deep, "quick_think_llm": quick,
             "calls": calls, "verified": p.get("verified", False),
@@ -95,7 +126,7 @@ def _env_for(cfg):
     return env
 
 
-def run(ticker, date=None, consented=False):
+def run(ticker, date=None, consented=False, model=None):
     """Start a background run. Returns a job dict immediately — a local multi-agent
     debate takes minutes to tens of minutes, so this must never block the HTTP thread."""
     ticker = (ticker or "").upper().strip()
@@ -105,7 +136,7 @@ def run(ticker, date=None, consented=False):
     if not a["ready"]:
         return {"ok": False, "error": a["reason"]}
     cfg = C.tradingagents()
-    est = estimate(ticker)
+    est = estimate(ticker, model)
     if est["paid"]:
         if cfg["anthropic"].get("require_consent", True) and not consented:
             return {"ok": False, "error": "consent required", "estimate": est,
@@ -119,9 +150,13 @@ def run(ticker, date=None, consented=False):
     date = date or dt.date.today().isoformat()
     outdir = os.path.join(results_root(), ticker, date)
     job_id = f"{ticker}-{dt.datetime.now().strftime('%Y%m%dT%H%M%S')}"
+    if model and cfg.get("backend") != "ollama":
+        cfg = json.loads(json.dumps(cfg))          # per-run override, config untouched
+        cfg["anthropic"]["deep_think_llm"] = model
     job = {"id": job_id, "ticker": ticker, "date": date, "state": "running",
            "started": dt.datetime.now().isoformat(timespec="seconds"),
-           "backend": cfg.get("backend"), "outdir": outdir, "estimate": est}
+           "backend": cfg.get("backend"), "outdir": outdir, "estimate": est,
+           "model": model or C.ta_models(cfg)[0]}
     with _lock:
         _jobs[job_id] = job
     threading.Thread(target=_worker, args=(job, cfg, outdir), daemon=True).start()
@@ -154,7 +189,7 @@ def _worker(job, cfg, outdir):
 def _log_run(job, cfg, outdir):
     """Record the run in token_ledger — actual usage, never the estimate."""
     b = cfg.get("backend", "ollama")
-    deep, _ = C.ta_models(cfg)
+    deep = job.get("model") or C.ta_models(cfg)[0]
     tin = tout = 0
     usage_path = os.path.join(outdir, "usage.json")
     if os.path.exists(usage_path):
@@ -163,41 +198,101 @@ def _log_run(job, cfg, outdir):
             tin = int(u.get("input_tokens") or 0); tout = int(u.get("output_tokens") or 0)
         except Exception:
             pass
-    if b == "ollama":
-        source, cost = "ollama_local", 0.0
-    else:
-        source = "anthropic_api"
-        cost = (CO.estimate(deep, tin, tout).get("cost_usd") or 0.0) if (tin or tout) else 0.0
+    source = "ollama_local" if b == "ollama" else "anthropic_api"
+    consented = 0 if b == "ollama" else 1
+    paid = b != "ollama"
+
+    by_agent = []
+    if os.path.exists(usage_path):
+        try:
+            by_agent = json.load(open(usage_path)).get("by_agent") or []
+        except Exception:
+            pass
+
     c = D.connect()
     try:
-        D.log_tokens(c, f"analysis:{job['ticker']}", source, model=deep,
-                     input_tokens=tin, output_tokens=tout, cost_usd=cost,
-                     consented=1 if b != "ollama" else 0,
-                     note=f"{job['state']} in {job.get('seconds')}s"
-                          + ("" if (tin or tout) else " (no usage reported)"))
+        if by_agent:
+            # One row per agent, so the ledger answers "which analyst cost what".
+            # Rows sum to the run total — no separate summary row, which would double-count.
+            for a in by_agent:
+                ai, ao = int(a.get("input") or 0), int(a.get("output") or 0)
+                cost = (CO.estimate(deep, ai, ao).get("cost_usd") or 0.0) if paid else 0.0
+                D.log_tokens(c, f"analysis:{job['ticker']}/{a.get('agent','?')}", source,
+                             model=deep, input_tokens=ai, output_tokens=ao, cost_usd=cost,
+                             consented=consented,
+                             note=f"{a.get('calls',0)} call(s), {job['state']}")
+        else:
+            cost = (CO.estimate(deep, tin, tout).get("cost_usd") or 0.0) if (paid and (tin or tout)) else 0.0
+            D.log_tokens(c, f"analysis:{job['ticker']}", source, model=deep,
+                         input_tokens=tin, output_tokens=tout, cost_usd=cost,
+                         consented=consented,
+                         note=f"{job['state']} in {job.get('seconds')}s"
+                              + ("" if (tin or tout) else " (no per-agent usage reported)"))
     finally:
         c.close()
+    job["by_agent"] = by_agent
+
+
+def _with_progress(job):
+    """Merge the runner's live progress.json into a job record.
+
+    The runner rewrites that file after every LLM event, so this is how the UI can show
+    which agent is working and what it has spent while the run is still going."""
+    j = dict(job)
+    p = os.path.join(job.get("outdir") or "", "progress.json")
+    if os.path.exists(p):
+        try:
+            prog = json.load(open(p))
+            deep = job.get("model") or C.ta_models()[0]
+            paid = C.tradingagents().get("backend") != "ollama"
+            for a in prog.get("agents", []):
+                a["label"] = AGENT_LABEL.get(a["agent"], a["agent"].replace("_", " ").title())
+                a["cost_usd"] = (CO.estimate(deep, a["input"], a["output"]).get("cost_usd")
+                                 if paid and (a["input"] or a["output"]) else 0.0)
+            t = prog.get("totals", {})
+            prog["cost_usd"] = (CO.estimate(deep, t.get("input_tokens", 0),
+                                            t.get("output_tokens", 0)).get("cost_usd")
+                                if paid else 0.0)
+            j["progress"] = prog
+        except Exception:
+            pass
+    return j
 
 
 def status(job_id=None):
     with _lock:
-        if job_id: return _jobs.get(job_id) or {"error": "unknown job"}
-        return sorted(_jobs.values(), key=lambda j: j["started"], reverse=True)
+        if job_id:
+            j = _jobs.get(job_id)
+            return _with_progress(j) if j else {"error": "unknown job"}
+        jobs = sorted(_jobs.values(), key=lambda j: j["started"], reverse=True)
+    return [_with_progress(j) for j in jobs]
 
 
 # ---------------------------------------------------------------- storing / reading
 def ingest_report(outdir, ticker, date, cfg=None):
+    """Store a report tree. The model recorded is the one that actually produced the
+    run — read from usage.json — not whatever the config happens to say now. Re-ingesting
+    an old report after changing the default model used to relabel it incorrectly."""
     cfg = cfg or C.tradingagents()
     deep, _ = C.ta_models(cfg)
-    src = f"tradingagents/{cfg.get('backend')}/{deep}"
+    backend = cfg.get("backend")
+    up = os.path.join(outdir, "usage.json")
+    if os.path.exists(up):
+        try:
+            u = json.load(open(up))
+            deep = u.get("deep_think_llm") or deep
+            backend = u.get("provider") or backend
+        except Exception:
+            pass
+    src = f"tradingagents/{backend}/{deep}"
     created = dt.datetime.now().isoformat(timespec="seconds")
     c = D.connect(); n = 0
     try:
         c.execute("DELETE FROM ai_notes WHERE ticker=? AND kind LIKE 'ta:%'"
                   " AND created_at LIKE ?", (ticker, f"{date}%"))
-        for rel, kind, _lbl, _o in SECTIONS:
-            p = os.path.join(outdir, rel)
-            if not os.path.exists(p): continue
+        for dsuf, fname, kind, _lbl, _o in SECTIONS:
+            p = _find_section(outdir, dsuf, fname)
+            if not p: continue
             body = open(p, encoding="utf-8", errors="ignore").read().strip()
             if not body: continue
             c.execute("INSERT INTO ai_notes(ticker,created_at,kind,content,source)"

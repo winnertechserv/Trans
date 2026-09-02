@@ -122,9 +122,10 @@ def is_configured():
 
 # ---------------------------------------------------------------- TradingAgents
 # Optional, out-of-process integration with TauricResearch/TradingAgents.
-# That project has NO LICENSE (all rights reserved) and pulls ~22 pip dependencies,
-# so it is never vendored here and never imported into this process. We only ever
-# hold a path to a clone the user installed themselves, and talk to it by subprocess.
+# That project pulls ~22 pip dependencies (langchain, langgraph, pandas, yfinance...),
+# so it is never vendored here and never imported into this process — Trans stays
+# runnable with just python3. It is Apache 2.0, so this is an engineering boundary,
+# not a licensing one. We hold a path to a clone the user installed, and use subprocess.
 
 TA_DEFAULTS = {
     "enabled": False,

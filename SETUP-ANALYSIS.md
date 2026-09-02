@@ -14,14 +14,14 @@ nothing on your behalf.
 
 ## Why it is not bundled
 
-Two reasons, both hard:
+**22 pip dependencies** — langchain, langgraph, pandas, yfinance, backtrader, redis,
+typer, rich. Trans is standard-library only, and that is deliberate: `./run.sh` works on
+any machine with `python3` and nothing else. Vendoring TradingAgents would end that
+property permanently, for a feature most users will never switch on.
 
-1. **No license.** TradingAgents publishes no LICENSE file, so all rights are reserved by
-   default. It cannot legally be vendored into or redistributed with this repo. You clone
-   it yourself; Trans only stores a path to your clone.
-2. **22 pip dependencies** — langchain, langgraph, pandas, yfinance, backtrader, redis,
-   typer, rich. Trans is standard-library only, and that is deliberate. They cannot share
-   a process.
+TradingAgents is **Apache 2.0** licensed, so bundling it would have been legally fine
+(with attribution and a NOTICE file). The dependency argument is the real reason, and it
+is sufficient on its own.
 
 So the integration is a **subprocess boundary**: `app/analysis.py` runs
 `tools/ta_runner.py` (our code) using *their* virtualenv's Python, and reads back a tree
@@ -63,6 +63,20 @@ and treat the output as a rough second opinion.
 ```bash
 export ANTHROPIC_API_KEY=...      # then restart ./run.sh
 ```
+
+The **Model** dropdown in the Research tab picks the model per run without touching your
+config. The default is **Haiku 4.5** — cheapest, and the sensible choice while you are
+still finding out whether the output is useful to you.
+
+| Model | Estimated per run (1 debate round) |
+|---|---|
+| Haiku 4.5 *(default)* | $0.12–$0.34 |
+| Sonnet 5 | $0.35–$1.03 |
+| Opus 5 | $1.75–$5.13 |
+
+Opus exceeds the default `max_cost_usd: 2.00` ceiling and will be refused until you
+raise it. Only models with a rate in `pricing.json` are offered — nothing is shown with
+a guessed price.
 
 **The key is never stored in `config.json`.** It is read from the environment and passed
 to the subprocess. `config.json` is gitignored, but keys in config files get copied into
@@ -109,6 +123,30 @@ while a run is in flight.
 Reports land in `analysis/<TICKER>/<DATE>/` as markdown and are stored in the `ai_notes`
 table. Both the directory and any vendored clone are gitignored, so generated research is
 never committed.
+
+## Per-agent cost logging
+
+The ledger records **one row per agent**, not one total, so you can see which analyst
+spent what:
+
+```
+analysis:MSFT/market_analyst          1,240 in    380 out   $0.0031
+analysis:MSFT/fundamentals_analyst    2,910 in    720 out   $0.0065
+analysis:MSFT/bull_researcher         ...
+```
+
+Rows sum to the run total; there is no separate summary row, which would double-count.
+
+Attribution comes from the LangGraph node name, captured when each model call starts and
+settled when it ends. If a provider reports no usage, the run is logged as
+"no per-agent usage reported" rather than showing an invented number.
+
+## Live progress
+
+While a run is in flight the Research tab refreshes every 5 seconds and shows which agent
+is working, how many model calls have happened, and the tokens and cost each agent has
+spent so far. Before the first model call it says it is gathering market data — that
+phase takes a minute or two and involves no LLM spend.
 
 ## Cost estimates are estimates
 

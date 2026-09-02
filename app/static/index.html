@@ -369,14 +369,19 @@ async function research(){
    ${a.ready?`
      <div class="row"><span class="lbl">Ticker</span>
       <select id="rsel">${held.map(t=>`<option ${t===tick?'selected':''}>${t}</option>`).join('')}</select>
+      ${a.paid?`<span class="lbl">Model</span>
+        <select id="rmodel">${(est.models||[]).map(m=>
+          `<option value="${m.id}" ${m.id===(STATE.researchModel||a.deep_think_llm)?'selected':''}
+           >${m.label}</option>`).join('')}</select>`:''}
       <button class="act" id="runr" ${running.length?'disabled':''}>
         ${running.length?'Running…':'Run analysis'}</button>
-      <span class="mut" style="font-size:12px">
-        ${a.paid?`est. ${usd(est.low,2)}–${usd(est.high,2)} per run`
-                :'free · a local model takes minutes'}</span>
      </div>
-     ${running.length?`<p class="mut">Analysing <b>${running[0].ticker}</b> since
-       ${running[0].started.replace('T',' ')} — this page updates itself.</p>`:''}`
+     <p class="mut" id="estline">${a.paid
+       ?`Estimated <b>${usd(est.low,2)}–${usd(est.high,2)}</b> per run across ~${est.calls}
+         model calls. An estimate, not a quote — actual usage is logged after the run.
+         ${est.verified?'':'<span class="neg">Rates in pricing.json are unverified.</span>'}`
+       :'Free — local model. Expect several minutes.'}</p>
+     ${running.length?renderProgress(running[0]):''}`
     :`<div class="banner">${(a.reason||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])).replace(/\n/g,'<br>')}
       <br><br>Setup: <b>SETUP-ANALYSIS.md</b></div>`}
   </div>
@@ -390,29 +395,64 @@ async function research(){
         style="padding:3px 10px;font-size:12px">Open</button></td></tr>`).join('')}
    </tbody></table></div></div>`:''}
   <div id="rep"></div>`;
-  if(a.ready) $('#rsel').onchange=e=>{STATE.researchTicker=e.target.value;};
+  if(a.ready){
+    $('#rsel').onchange=e=>{STATE.researchTicker=e.target.value;};
+    const ms=$('#rmodel');
+    if(ms) ms.onchange=async e=>{
+      STATE.researchModel=e.target.value;
+      const n=await post('/api/analysis/estimate',{ticker:$('#rsel').value,model:e.target.value});
+      $('#estline').innerHTML=`Estimated <b>${usd(n.low,2)}–${usd(n.high,2)}</b> per run across
+        ~${n.calls} model calls. An estimate, not a quote — actual usage is logged after the run.
+        ${n.verified?'':'<span class="neg">Rates in pricing.json are unverified.</span>'}`;
+    };
+  }
   if(STATE.openReport) showReport(STATE.openReport);
-  if(running.length) setTimeout(()=>{if(tab==='research')research();},15000);
+  if(running.length) setTimeout(()=>{if(tab==='research')research();},5000);
 
   $('#main').onclick=async e=>{
     const op=e.target.dataset&&e.target.dataset.open;
     if(op){STATE.openReport=op;showReport(op);return;}
     if(e.target.id==='runr'){
       const t=$('#rsel').value;
+      const mdl=$('#rmodel')?$('#rmodel').value:null;
       if(a.paid){
+        const cur=await post('/api/analysis/estimate',{ticker:t,model:mdl});
         const ok=confirm(`Run TradingAgents on ${t} using the Anthropic API?\n\n`
-          +`Estimated ${usd(est.low,2)}–${usd(est.high,2)} across ~${est.calls} model calls.\n`
+          +`Model: ${mdl}\n`
+          +`Estimated ${usd(cur.low,2)}–${usd(cur.high,2)} across ~${cur.calls} model calls.\n`
           +`This is an ESTIMATE — actual usage varies and is logged after the run.\n`
-          +(est.verified?'':'Pricing in pricing.json is UNVERIFIED.\n')
+          +(cur.verified?'':'Pricing in pricing.json is UNVERIFIED.\n')
           +`\nThis will be billed to your API key.`);
         if(!ok) return;
       }
       e.target.disabled=true; e.target.textContent='Starting…';
-      const r=await post('/api/analysis/run',{ticker:t,consented:a.paid});
+      const r=await post('/api/analysis/run',{ticker:t,model:mdl,consented:a.paid});
       if(!r.ok) alert('Could not start: '+(r.error||'unknown'));
       research();
     }
   };
+}
+
+function renderProgress(j){
+  const p=j.progress;
+  if(!p) return `<p class="mut">Analysing <b>${j.ticker}</b> since
+    ${j.started.replace('T',' ')} — starting up, no agent has reported yet.</p>`;
+  const rows=(p.agents||[]).map(a=>`<tr>
+    <td>${a.state==='running'?'▶':a.state==='error'?'✗':'✓'} ${a.label}</td>
+    <td class="mut">${a.calls} call${a.calls===1?'':'s'}</td>
+    <td>${fmt(a.input)} in</td><td>${fmt(a.output)} out</td>
+    <td>${a.cost_usd?usd(a.cost_usd,4):'<span class="mut">—</span>'}</td></tr>`).join('');
+  const t=p.totals||{};
+  return `<p class="mut">Analysing <b>${j.ticker}</b> · ${p.elapsed_s}s elapsed ·
+    ${p.llm_calls} model call${p.llm_calls===1?'':'s'}
+    ${p.current?`· currently <b>${(p.agents.find(a=>a.agent===p.current)||{}).label||p.current}</b>`:''}</p>
+   ${rows?`<div class="wrap"><table><thead><tr><th>Agent</th><th>Calls</th>
+     <th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+     <tbody>${rows}</tbody>
+     <tfoot><tr><th>Total</th><th>${p.llm_calls}</th>
+       <th>${fmt(t.input_tokens||0)}</th><th>${fmt(t.output_tokens||0)}</th>
+       <th>${p.cost_usd?usd(p.cost_usd,4):'—'}</th></tr></tfoot></table></div>`
+    :'<p class="mut">Gathering market data — no model calls yet.</p>'}`;
 }
 
 async function showReport(t){

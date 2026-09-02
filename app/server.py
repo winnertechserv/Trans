@@ -89,11 +89,11 @@ class H(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "rows": total, "files": files,
                                    "cursor": SY.cursor(c)})
             if u.path == "/api/analysis/estimate":
-                return self._json(AN.estimate(body.get("ticker")))
+                return self._json(AN.estimate(body.get("ticker"), body.get("model")))
             if u.path == "/api/analysis/run":
-                return self._json(AN.run(body.get("ticker"),
-                                         body.get("date"),
-                                         consented=bool(body.get("consented"))))
+                return self._json(AN.run(body.get("ticker"), body.get("date"),
+                                         consented=bool(body.get("consented")),
+                                         model=body.get("model")))
             if u.path == "/api/backup":
                 rec = B.snapshot(kind=body.get("kind", "manual"))
                 removed = B.prune()
