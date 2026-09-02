@@ -367,7 +367,7 @@ def contributions(c, market=None):
     """
     br = M.broker_of(market) if market else None
     rows = list(c.execute(
-        "SELECT date,ticker,type,quantity,price FROM transactions"
+        "SELECT date,ticker,type,quantity,price,asset FROM transactions"
         " WHERE type IN ('buy','sell')" + (" AND broker=?" if br else "")
         + " ORDER BY date,id", (br,) if br else ()))
 
@@ -384,29 +384,43 @@ def contributions(c, market=None):
             avg = st[1] / st[0] if st[0] else 0.0
             st[0] -= q; st[1] -= q * avg
 
-    by_m = collections.defaultdict(lambda: {"bought": 0.0, "sold": 0.0, "realized": 0.0})
+    def _z():
+        return {"bought": 0.0, "sold": 0.0, "realized": 0.0}
+    by_m = collections.defaultdict(lambda: collections.defaultdict(_z))
     run = collections.defaultdict(lambda: [0.0, 0.0])
     for r in rows:
         m = r["date"][:7]
+        a = r["asset"] or "equity"
         q, px = r["quantity"] or 0, r["price"] or 0
         st = run[r["ticker"]]
         if r["type"] == "buy":
-            by_m[m]["bought"] += q * px
+            by_m[m][a]["bought"] += q * px
             st[0] += q; st[1] += q * px
         else:
-            by_m[m]["sold"] += q * px
+            by_m[m][a]["sold"] += q * px
             if r["ticker"] not in broken and q <= st[0] + 1e-9:
                 avg = st[1] / st[0] if st[0] else 0.0
-                by_m[m]["realized"] += q * px - q * avg
+                by_m[m][a]["realized"] += q * px - q * avg
                 st[0] -= q; st[1] -= q * avg
 
-    ser = [{"month": k, "amount": round(v["bought"], 2), "bought": round(v["bought"], 2),
-            "sold": round(v["sold"], 2), "realized": round(v["realized"], 2)}
-           for k, v in sorted(by_m.items())]
+    # Broken out by asset because a total hides whichever half you stopped trading:
+    # all but Rs500 of this portfolio's mutual fund activity predates the default
+    # two-year window, so it looked absent from a figure it was fully inside.
+    ser = []
+    for k, per in sorted(by_m.items()):
+        tot = _z()
+        for a in per.values():
+            for f in tot:
+                tot[f] += a[f]
+        ser.append({"month": k, "amount": round(tot["bought"], 2),
+                    "bought": round(tot["bought"], 2), "sold": round(tot["sold"], 2),
+                    "realized": round(tot["realized"], 2),
+                    "by_asset": {a: {f: round(v[f], 2) for f in v} for a, v in per.items()}})
     last12 = sum(x["bought"] for x in ser[-12:])
+    seen = sorted({a for x in ser for a in x["by_asset"]})
     return {"series": ser, "trailing_12m": round(last12, 2), "run_rate": round(last12, 2),
             "realized_total": round(sum(x["realized"] for x in ser), 2),
-            "realized_skipped": sorted(broken)}
+            "realized_skipped": sorted(broken), "assets": seen}
 
 def fundamentals(c, ticker):
     sec = S.sector_of(ticker)

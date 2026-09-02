@@ -495,7 +495,9 @@ async function divs(){
 // The monthly series is the raw material; quarters and years are rolled up in the
 // browser rather than round-tripping, because /api/contributions already returns every
 // month there has ever been and the aggregation is a group-by.
-let contribPeriod='month', contribYears=2;
+let contribPeriod='month', contribYears=2, contribAsset='all';
+const ASSET_LABEL={equity:'Stocks',mf:'Mutual funds',crypto:'Crypto',
+                   sgb:'Gold bonds',bond:'Bonds'};
 function contribBucket(m,p){
   const y=+m.slice(0,4), mo=+m.slice(5,7);
   return p==='year'?String(y):p==='quarter'?`${y}-Q${Math.ceil(mo/3)}`:m;
@@ -507,8 +509,10 @@ function contribSeries(ser){
   const agg=new Map();
   for(const x of ser){ if(x.month<cut) continue;
     const k=contribBucket(x.month,contribPeriod);
+    const v=contribAsset==='all'?x:((x.by_asset||{})[contribAsset]||{bought:0,sold:0,realized:0});
+    if(contribAsset!=='all' && !v.bought && !v.sold && !v.realized) continue;
     const a=agg.get(k)||{label:k,bought:0,sold:0,realized:0};
-    a.bought+=x.bought; a.sold+=x.sold; a.realized+=x.realized; agg.set(k,a); }
+    a.bought+=v.bought; a.sold+=v.sold; a.realized+=v.realized; agg.set(k,a); }
   return [...agg.values()].sort((a,b)=>a.label<b.label?-1:1);
 }
 function contribCard(cn){
@@ -527,6 +531,9 @@ function contribCard(cn){
     <span class="lbl" style="margin-left:8px">Span</span>
     <span class="seg" id="cspan">${spans.map(([k,l])=>
       `<button data-v="${k}" aria-pressed="${String(k)===String(contribYears)}">${l}</button>`).join('')}</span>
+    ${(cn.assets||[]).length>1?`<span class="lbl" style="margin-left:8px">Asset</span>
+     <span class="seg" id="casset">${[['all','All'],...cn.assets.map(a=>[a,ASSET_LABEL[a]||a])]
+       .map(([k,l])=>`<button data-v="${k}" aria-pressed="${k===contribAsset}">${l}</button>`).join('')}</span>`:''}
    </div>
    ${cs.length?`<div class="wrap"><table><thead><tr><th>Period</th><th></th>
      <th>Bought</th><th>Sold</th><th>Net cash</th><th>Booked P/L</th></tr></thead>
@@ -546,8 +553,10 @@ function contribCard(cn){
      order history shows them buying — that is what a split looks like, and a per-share
      average there would invent a loss. Those sales still count in Sold, so this column
      totals less than the Booked P/L in the header.`:''}
-     Trailing 12 months bought <b>${usd(cn.trailing_12m)}</b>.</p>`
-    :`<p class="mut">No activity in this window.</p>`}`;
+     Trailing 12 months bought <b>${usd(cn.trailing_12m)}</b>${contribAsset!=='all'
+       ?` (all assets). Showing <b>${ASSET_LABEL[contribAsset]||contribAsset}</b> only.`:'.'}</p>`
+    :`<p class="mut">No ${contribAsset==='all'?'':((ASSET_LABEL[contribAsset]||contribAsset)+' ')}activity
+      in this window.${contribAsset!=='all'?' Try a longer span — this asset may simply be older than it.':''}</p>`}`;
 }
 
 async function analysis(){
@@ -574,6 +583,8 @@ async function analysis(){
       contribPeriod=v; $('#ccard').innerHTML=contribCard(cn); wire();};
     $('#cspan').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
       contribYears=v==='all'?'all':+v; $('#ccard').innerHTML=contribCard(cn); wire();};
+    const ca=$('#casset'); if(ca) ca.onclick=e=>{const v=e.target.dataset.v; if(!v)return;
+      contribAsset=v; $('#ccard').innerHTML=contribCard(cn); wire();};
   };
   wire();
 }
