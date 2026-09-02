@@ -16,7 +16,12 @@ def tracked():
 
 FORBIDDEN_PATHS = [
     (re.compile(r"\.db$|\.db-wal$|\.db-shm$"), "SQLite database"),
-    (re.compile(r"^sync/(inbox|archive)/.*\.json$"), "raw broker data"),
+    # Anything under a sync folder is raw broker data whatever its extension. The old
+    # rule named only .json, so Zerodha tradebook CSVs (account code in the filename)
+    # and Paytm statement PDFs (PAN, address, phone) were reported clean and committed.
+    (re.compile(r"^sync/(inbox|archive)/(?!\.gitkeep$).+"), "raw broker data"),
+    (re.compile(r"\.pdf$", re.I), "PDF — broker statements carry PAN and address"),
+    (re.compile(r"tradebook|_statement|Transactions_\d", re.I), "broker export"),
     (re.compile(r"^(transactions|positions)\.csv$"), "exported holdings"),
     (re.compile(r"^report\.json$"), "generated report"),
     (re.compile(r"^config\.json$"), "local config with account number"),

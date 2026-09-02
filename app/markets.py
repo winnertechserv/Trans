@@ -8,14 +8,17 @@ each in its own currency.
 
 MARKETS = {
     "us": {"key": "us", "label": "US", "flag": "🇺🇸", "broker": "robinhood",
+           "brokers": ["robinhood"],
            "currency": "USD", "symbol": "$", "locale": "en-US",
            "benchmark": "SPY", "suffix": ""},
     "in": {"key": "in", "label": "India", "flag": "🇮🇳", "broker": "zerodha",
+           "brokers": ["zerodha", "paytm"],
            "currency": "INR", "symbol": "₹", "locale": "en-IN",
            "benchmark": "^NSEI", "suffix": ".NS"},
 }
 DEFAULT = "us"
-BROKER_TO_MARKET = {m["broker"]: k for k, m in MARKETS.items()}
+BROKER_TO_MARKET = {b: k for k, m in MARKETS.items()
+                    for b in (m.get("brokers") or [m["broker"]])}
 
 
 def get(key):
@@ -23,7 +26,19 @@ def get(key):
 
 
 def broker_of(key):
+    """The market's primary broker — the one its sync prompts talk to."""
     return get(key)["broker"]
+
+
+def brokers_of(key):
+    """Every broker whose holdings belong to this market.
+
+    A country is not one broker: Indian mutual funds sit at Paytm while the demat is at
+    Zerodha, and both are rupees in the same portfolio. Reads span all of them; sync
+    prompts still target one, since each broker is fetched its own way.
+    """
+    m = get(key)
+    return list(m.get("brokers") or [m["broker"]])
 
 
 def all_markets():

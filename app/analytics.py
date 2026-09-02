@@ -8,12 +8,26 @@ import db as D, sectors as S, markets as M
 from portfolio import Transaction, Position, analyse
 import portfolio as P
 
+def _brokers(market):
+    return tuple(M.brokers_of(market)) if market else ()
+
+
+def _bw(br):
+    """Leading WHERE clause restricting to a market's brokers."""
+    return (" WHERE broker IN (%s)" % ",".join("?" * len(br))) if br else ""
+
+
+def _ba(br):
+    """The same as an additional AND."""
+    return (" AND broker IN (%s)" % ",".join("?" * len(br))) if br else ""
+
+
 def _txns(c, market=None):
     out = []
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     q = ("SELECT date,ticker,type,quantity,price,amount,fees FROM transactions"
-         + (" WHERE broker=?" if br else ""))
-    for r in c.execute(q, (br,) if br else ()):
+         + _bw(br))
+    for r in c.execute(q, br):
         out.append(Transaction.from_row({
             "date": r["date"], "ticker": r["ticker"], "type": r["type"],
             "quantity": r["quantity"] or "", "price": r["price"] or "",
@@ -21,10 +35,10 @@ def _txns(c, market=None):
     return out
 
 def _positions(c, market=None):
-    br = M.broker_of(market) if market else None
-    q = "SELECT ticker,quantity,price FROM positions" + (" WHERE broker=?" if br else "")
+    br = _brokers(market)
+    q = "SELECT ticker,quantity,price FROM positions" + _bw(br)
     return {r["ticker"]: Position(r["ticker"], r["quantity"], r["price"])
-            for r in c.execute(q, (br,) if br else ())}
+            for r in c.execute(q, br)}
 
 def cost_basis(c, market=None):
     """{ticker: cost of the shares still held}, plus the tickers where it is a guess.
@@ -39,21 +53,21 @@ def cost_basis(c, market=None):
     shares than they appear to own and their per-share average is nonsense. Those are
     exactly the ones Zerodha's own average covers.
     """
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     have = {}
     q = ("SELECT ticker,quantity,avg_cost FROM positions WHERE avg_cost IS NOT NULL"
-         " AND avg_cost>0" + (" AND broker=?" if br else ""))
-    for r in c.execute(q, (br,) if br else ()):
+         " AND avg_cost>0" + _ba(br))
+    for r in c.execute(q, br):
         have[r["ticker"]] = r["quantity"] * r["avg_cost"]
 
     held = {r["ticker"]: r["quantity"] for r in c.execute(
-        "SELECT ticker,quantity FROM positions" + (" WHERE broker=?" if br else ""),
-        (br,) if br else ())}
+        "SELECT ticker,quantity FROM positions" + _bw(br),
+        br)}
     run = collections.defaultdict(lambda: [0.0, 0.0])   # ticker -> [qty, cost]
     broken = set()
     tq = ("SELECT ticker,type,quantity,price FROM transactions WHERE type IN ('buy','sell')"
-          + (" AND broker=?" if br else "") + " ORDER BY date,id")
-    for r in c.execute(tq, (br,) if br else ()):
+          + _ba(br) + " ORDER BY date,id")
+    for r in c.execute(tq, br):
         st = run[r["ticker"]]
         q_, p_ = r["quantity"] or 0, r["price"] or 0
         if r["type"] == "buy":
@@ -103,11 +117,11 @@ def asset_types(c, market=None):
     mutual fund looks like an equity the moment it gains an order history — which is
     exactly what happened when the MF tradebook landed, putting ISINs back into pickers
     that assume a Yahoo symbol."""
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     out = {}
     for q in ("SELECT DISTINCT ticker,asset FROM transactions",
               "SELECT ticker,asset FROM positions"):
-        for r in c.execute(q + (" WHERE broker=?" if br else ""), (br,) if br else ()):
+        for r in c.execute(q + _bw(br), br):
             if r["asset"]:
                 out[r["ticker"]] = r["asset"]
     return out
@@ -149,15 +163,15 @@ def results(c, as_of=None, market=None):
     # Fall back to the broker's own average cost so value and P/L are still real; XIRR
     # genuinely cannot be computed without dated flows, and says so rather than showing 0.
     seen = {r["ticker"] for r in rows}
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     # Once a tradebook is loaded, "import a tradebook" stops being the right explanation.
     # What is left are holdings the equity tradebook structurally cannot contain: bonds
     # and SGBs bought in the primary market, and shares received from a demerger, which
     # arrive with a carved-out cost basis and no purchase of their own.
     has_txns = bool(rows)
     q = ("SELECT ticker,quantity,price,avg_cost,asset,exchange FROM positions"
-         + (" WHERE broker=?" if br else ""))
-    for p in c.execute(q, (br,) if br else ()):
+         + _bw(br))
+    for p in c.execute(q, br):
         if p["ticker"] in seen:
             continue
         inv = (p["avg_cost"] or 0) * p["quantity"]
@@ -232,16 +246,16 @@ def _unreconciled(c, market):
     Equities are deliberately excluded: their derived counts drift for split-adjusted
     tickers as a matter of course, and flagging those would be noise.
     """
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     held = {r["ticker"]: r["quantity"] for r in c.execute(
         "SELECT ticker,quantity FROM positions WHERE asset='mf'"
-        + (" AND broker=?" if br else ""), (br,) if br else ())}
+        + _ba(br), br)}
     if not held:
         return {}
     got = collections.defaultdict(float)
     for r in c.execute(
             "SELECT ticker,type,quantity FROM transactions WHERE asset='mf'"
-            + (" AND broker=?" if br else ""), (br,) if br else ()):
+            + _ba(br), br):
         got[r["ticker"]] += r["quantity"] if r["type"] == "buy" else -r["quantity"]
     out = {}
     for t, qty in held.items():
@@ -258,10 +272,10 @@ def _xirr_open(c, market, as_of):
     dominated by whatever was traded years ago, and it answers a different question from
     "how are the things I own doing".
     """
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     open_t = {r["ticker"] for r in c.execute(
-        "SELECT ticker FROM positions WHERE quantity>0" + (" AND broker=?" if br else ""),
-        (br,) if br else ())}
+        "SELECT ticker FROM positions WHERE quantity>0" + _ba(br),
+        br)}
     if not open_t:
         return None, "no open positions"
     txns = [t for t in _txns(c, market) if t.ticker in open_t]
@@ -274,10 +288,10 @@ def _xirr_open(c, market, as_of):
 def daily_buys(c, days=30, market=None):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     by_day = collections.OrderedDict()
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     for r in c.execute("SELECT date,ticker,type,quantity,price,agent,asset FROM transactions"
-                       " WHERE type='buy' AND date>=?" + (" AND broker=?" if br else "")
-                       + " ORDER BY date DESC,ticker", (since, br) if br else (since,)):
+                       " WHERE type='buy' AND date>=?" + _ba(br)
+                       + " ORDER BY date DESC,ticker", (since, *br)):
         amt = (r["quantity"] or 0) * (r["price"] or 0)
         d = by_day.setdefault(r["date"], {"date": r["date"], "total": 0.0, "n": 0, "items": []})
         d["total"] += amt; d["n"] += 1
@@ -291,10 +305,10 @@ def buy_program(c, days=30, market=None):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     agg = collections.defaultdict(lambda: {"amount": 0.0, "n": 0})
     ndays = set()
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     for r in c.execute("SELECT date,ticker,quantity,price,agent FROM transactions"
-                       " WHERE type='buy' AND date>=?" + (" AND broker=?" if br else ""),
-                       (since, br) if br else (since,)):
+                       " WHERE type='buy' AND date>=?" + _ba(br),
+                       (since, *br)):
         a = agg[r["ticker"]]; a["amount"] += (r["quantity"] or 0) * (r["price"] or 0); a["n"] += 1
         a["agent"] = r["agent"]; ndays.add(r["date"])
     tot = sum(v["amount"] for v in agg.values()) or 1
@@ -311,9 +325,9 @@ def dividends(c, market=None):
     by_ticker = collections.defaultdict(lambda: {"amount": 0.0, "n": 0})
     by_month = collections.defaultdict(float)
     total = 0.0
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     for r in c.execute("SELECT date,ticker,amount FROM transactions WHERE type='dividend'"
-                       + (" AND broker=?" if br else ""), (br,) if br else ()):
+                       + _ba(br), br):
         a = r["amount"] or 0; total += a
         by_year[r["date"][:4]]["amount"] += a; by_year[r["date"][:4]]["n"] += 1
         by_ticker[r["ticker"]]["amount"] += a; by_ticker[r["ticker"]]["n"] += 1
@@ -365,11 +379,11 @@ def contributions(c, market=None):
     figure, and the caller is told how many were skipped rather than the gap being
     silent.
     """
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     rows = list(c.execute(
         "SELECT date,ticker,type,quantity,price,asset FROM transactions"
-        " WHERE type IN ('buy','sell')" + (" AND broker=?" if br else "")
-        + " ORDER BY date,id", (br,) if br else ()))
+        " WHERE type IN ('buy','sell')" + _ba(br)
+        + " ORDER BY date,id", br))
 
     broken = set()
     run = collections.defaultdict(lambda: [0.0, 0.0])
@@ -464,17 +478,17 @@ def costs(c):
             "total_input": tot["i"], "total_output": tot["o"], "by_source": by_src}
 
 def health(c, market=None):
-    br = M.broker_of(market) if market else None
+    br = _brokers(market)
     last = c.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 10").fetchone()
     runs = [dict(r) for r in c.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 10")]
     maxd = c.execute("SELECT MAX(date) d FROM transactions"
-                     + (" WHERE broker=?" if br else ""), (br,) if br else ()).fetchone()["d"]
+                     + _bw(br), br).fetchone()["d"]
     stale = (dt.date.today() - dt.date.fromisoformat(maxd)).days if maxd else None
     return {"last_transaction_date": maxd, "days_stale": stale, "runs": runs,
             "n_transactions": c.execute("SELECT COUNT(*) n FROM transactions"
-                + (" WHERE broker=?" if br else ""), (br,) if br else ()).fetchone()["n"],
+                + _bw(br), br).fetchone()["n"],
             "n_positions": c.execute("SELECT COUNT(*) n FROM positions"
-                + (" WHERE broker=?" if br else ""), (br,) if br else ()).fetchone()["n"],
+                + _bw(br), br).fetchone()["n"],
             "n_fundamentals": c.execute("SELECT COUNT(DISTINCT ticker) n FROM fundamentals").fetchone()["n"]}
 
 if __name__ == "__main__":

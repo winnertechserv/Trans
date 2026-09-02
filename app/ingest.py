@@ -4,7 +4,7 @@ Two entry points:
   bootstrap  - one-time load of the full history already fetched
   inbox      - ingest any envelope JSON dropped into sync/inbox/ by Claude Code
 """
-import json, os, sys, glob, csv, datetime as dt
+import json, os, sys, glob, csv, re, collections, datetime as dt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db as D
 import markets as MK
@@ -182,6 +182,141 @@ def upsert_kite_mf_holdings(c, rows, asof=None):
     return n
 
 
+def ingest_paytm_statements(c, paths):
+    """Paytm Money MF statements (extracted text, or PDF via pdftotext) -> transactions.
+
+    Paytm exposes no API, so the per-financial-year statement is the only route. Each is
+    checked against its own Fresh Purchase and Withdrawal totals before anything is
+    written: a statement that does not add up is skipped whole rather than imported
+    partially, because a missing purchase silently inflates realised profit.
+
+    There is no ISIN and no trade id. Holdings are keyed on folio plus a slug of the
+    scheme name — a folio alone is not enough, since one SBI folio here carries three
+    different schemes — and rows dedupe on the full content of the transaction plus an
+    occurrence counter, which is stable across re-uploads of the same statements.
+    """
+    import hashlib
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import paytm as PM
+
+    pw = os.environ.get("PAYTM_PDF_PASSWORD", "")
+    rows, files, skipped, seen_text = [], [], [], set()   # rows: one list per statement
+    for path in sorted(paths):
+        if path.lower().endswith(".pdf"):
+            import subprocess, tempfile
+            with tempfile.NamedTemporaryFile(suffix=".txt") as tmp:
+                cmd = ["pdftotext", "-layout"] + (["-upw", pw] if pw else []) + [path, tmp.name]
+                try:
+                    r = subprocess.run(cmd, capture_output=True, text=True)
+                except FileNotFoundError:
+                    skipped.append(f"{os.path.basename(path)}: pdftotext not installed"
+                                   " (brew install poppler / apt install poppler-utils)")
+                    continue
+                if r.returncode:
+                    skipped.append(f"{os.path.basename(path)}: {r.stderr.strip()[:60]}"
+                                   " — set PAYTM_PDF_PASSWORD if it is protected")
+                    continue
+                text = open(tmp.name).read()
+        else:
+            text = open(path).read()
+
+        h = hashlib.md5(text.encode()).hexdigest()
+        if h in seen_text:                       # the same year handed over twice
+            files.append(f"{os.path.basename(path)}:duplicate")
+            continue
+        seen_text.add(h)
+
+        parsed, meta = PM.parse_text(text)
+        ok, detail = PM.check(parsed, meta)
+        if not ok:
+            skipped.append(f"{os.path.basename(path)}: FY{meta.get('fy','?')} totals "
+                           f"{detail['buy']:.0f}/{detail['sell']:.0f} vs stated "
+                           f"{detail['stated_buy']}/{detail['stated_sell']}")
+            continue
+        rows.append([r for r in parsed if r["status"] == "Confirmed"])
+        files.append(f"FY{meta.get('fy','?')}:{detail['rows']}")
+
+    # Names must be reconciled across the whole batch before anything is keyed on them.
+    flat = [r for one in rows for r in one]
+    if flat:
+        PM.canonicalise(flat)
+
+    # Statements have no trade id, so a row is identified by its own content plus an
+    # occurrence number. Counting occurrences across the whole batch would turn a
+    # re-handed statement into duplicate transactions — and the same year does arrive
+    # twice, with a different generation timestamp in the footer so the files are not
+    # byte-identical. Count within each statement and keep the highest, which is what
+    # overlapping statements of the same period mean.
+    best, sample = {}, {}
+    for one in rows:
+        seen_here = collections.Counter()
+        for r in sorted(one, key=lambda x: (x["date"], x["folio"], x["scheme"], x["amount"])):
+            tick = _paytm_ticker(r["folio"], r["scheme"])
+            key = (tick, r["date"], r["type"], round(r["units"], 4), round(r["amount"], 2))
+            seen_here[key] += 1
+            sample[key] = (r, tick)
+        for k, v in seen_here.items():
+            best[k] = max(best.get(k, 0), v)
+
+    n = 0
+    names = {}
+    for key, times in best.items():
+        r, tick = sample[key]
+        names[tick] = r["scheme"]
+        for j in range(1, times + 1):
+            oid = "pm:%s:%s:%s:%.4f:%.2f:%d" % (tick, r["date"], r["type"],
+                                                r["units"], r["amount"], j)
+            n += _ins2(c, oid, r["date"], tick, r["type"], r["units"], r["nav"],
+                       None, 0.0, "mf", "user", "paytm", "INR")
+
+    today = dt.date.today().isoformat()
+    for tick, nm in names.items():
+        c.execute("INSERT INTO fundamentals(ticker,asof,metric,value,text_value)"
+                  " VALUES(?,?,?,NULL,?) ON CONFLICT(ticker,asof,metric) DO NOTHING",
+                  (tick, today, "name", nm))
+    c.commit()
+    _rebuild_paytm_positions(c)
+    return n, files + [f"SKIPPED {x}" for x in skipped]
+
+
+def _paytm_ticker(folio, scheme):
+    """Folio, a readable slug, and a hash of the full scheme name.
+
+    The slug alone is not enough: folio 14540129 holds five ICICI Prudential schemes
+    whose names agree for well past ten characters, and truncating merged all five into
+    one holding. The hash makes the key exact; the slug keeps it recognisable in a log.
+    """
+    import hashlib
+    norm = re.sub(r"[^A-Za-z0-9]", "", scheme).upper()
+    return f"PM{folio}-{norm[:10]}{hashlib.md5(norm.encode()).hexdigest()[:4].upper()}"
+
+
+def _rebuild_paytm_positions(c):
+    """Paytm reports no holdings, so derive them from the transactions.
+
+    Units are what was bought less what was sold. There is no live NAV either, so the
+    mark is the NAV of the most recent transaction in that scheme and `asof` records its
+    date — for anything still on a monthly SIP that is days old, and for a fund left
+    untouched for years the staleness is visible rather than hidden.
+    """
+    agg = {}
+    for r in c.execute("SELECT ticker,date,type,quantity,price FROM transactions"
+                       " WHERE broker='paytm' ORDER BY date,id"):
+        a = agg.setdefault(r["ticker"], {"u": 0.0, "nav": 0.0, "asof": ""})
+        a["u"] += r["quantity"] if r["type"] == "buy" else -r["quantity"]
+        if r["date"] >= a["asof"]:
+            a["asof"], a["nav"] = r["date"], r["price"]
+    c.execute("DELETE FROM positions WHERE broker='paytm'")
+    for tick, a in agg.items():
+        if a["u"] <= 1e-6:
+            continue
+        c.execute("INSERT INTO positions(ticker,quantity,price,asset,asof,broker,"
+                  "currency,exchange,avg_cost) VALUES(?,?,?,?,?,?,?,?,NULL)",
+                  (tick, a["u"], a["nav"], "mf", a["asof"], "paytm", "INR", "MF"))
+    c.commit()
+    return len(agg)
+
+
 def _kite_asset(sym):
     """Not everything in an Indian demat is a stock — Sovereign Gold Bonds and listed
     bonds sit alongside equities and must not be sector-classified as companies."""
@@ -273,6 +408,16 @@ def run_inbox(c):
         total += n
         files.append(f"zerodha tradebook x{len(csvs)}:+{n}")
         for p in csvs:
+            os.replace(p, os.path.join(ARCHIVE,
+                       dt.datetime.now().strftime("%Y%m%dT%H%M%S_") + os.path.basename(p)))
+    pm = sorted(glob.glob(os.path.join(INBOX, "Transactions_*.pdf"))
+                + glob.glob(os.path.join(INBOX, "paytm*.pdf"))
+                + glob.glob(os.path.join(INBOX, "paytm*.txt")))
+    if pm:
+        n, det = ingest_paytm_statements(c, pm)
+        total += n
+        files.append(f"paytm x{len(pm)}:+{n} [{'; '.join(det)}]")
+        for p in pm:
             os.replace(p, os.path.join(ARCHIVE,
                        dt.datetime.now().strftime("%Y%m%dT%H%M%S_") + os.path.basename(p)))
     for f in sorted(glob.glob(os.path.join(INBOX, "*.json"))):

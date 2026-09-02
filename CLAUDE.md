@@ -94,6 +94,17 @@ regenerates them on every start; if you need them sooner, run `python3 app/sync.
   `RENAMES`/`ticker_aliases` changed in between. The flip side: a rename added later does
   not reach rows already stored, because the whole row is skipped. Run
   `python3 app/ingest.py remap` for that — re-uploading will not do it.
+- **Paytm Money is statements only.** No API, no MCP. Per-financial-year PDFs go in
+  `sync/inbox`; `app/paytm.py` parses the text (`pdftotext -layout`, poppler — a system
+  tool, not a pip dependency) and the password comes from `PAYTM_PDF_PASSWORD`, never
+  config. Each statement is checked against its own Fresh Purchase and Withdrawal totals
+  and skipped whole if it does not add up. No ISIN and no trade id: holdings key on folio
+  plus a hash of the scheme name, because one folio can hold several schemes and one
+  scheme is spelled several ways across years. Paytm reports no holdings or live NAV, so
+  positions are derived from the transactions and marked at the last transacted NAV, with
+  `asof` showing how stale that is.
+- **India spans two brokers.** `markets.brokers_of()` returns them; reads use
+  `broker IN (...)`. `broker_of()` is still the primary, for sync prompts.
 - **Zerodha mutual funds need `get_mf_holdings`.** They sit outside the demat, so
   `get_holdings()` does not return them and the tradebook does not contain them — they
   were invisible until that call was added. Keyed on the ISIN Kite reports as
