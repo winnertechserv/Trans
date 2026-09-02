@@ -59,6 +59,23 @@ background:var(--panel);color:var(--ink)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);
 max-width:460px;padding:20px}dialog::backdrop{background:#0008}
 .miss{color:var(--mut);font-style:italic}
+.stage{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+padding:10px 8px 4px;font-weight:600}
+tr.pending td{opacity:.45}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;
+vertical-align:middle;background:var(--line)}
+.dot.run{background:var(--acc);animation:pulse 1.1s ease-in-out infinite}
+.dot.done{background:var(--pos)} .dot.err{background:var(--neg)}
+.dot.skip{background:transparent;border:1px solid var(--line)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.verdict{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;
+background:var(--chip);border-radius:9px;padding:13px 16px;margin:12px 0}
+.verdict b{display:block;font-size:19px;letter-spacing:-.02em}
+.verdict span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.md{line-height:1.6} .md h3{font-size:13px;margin:14px 0 6px}
+.md p{margin:9px 0} .md ul{margin:8px 0;padding-left:20px} .md li{margin:3px 0}
+.md strong{font-weight:650}
+.rep-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 </style></head><body>
 <header><h1>Portfolio</h1><div class="kpis" id="kpis"></div></header>
 <nav id="nav"></nav><main id="main">loading…</main>
@@ -438,39 +455,106 @@ function estLine(e){
 function renderProgress(j){
   const p=j.progress;
   if(!p) return `<p class="mut">Analysing <b>${j.ticker}</b> since
-    ${j.started.replace('T',' ')} — starting up, no agent has reported yet.</p>`;
-  const rows=(p.agents||[]).map(a=>`<tr>
-    <td>${a.state==='running'?'▶':a.state==='error'?'✗':'✓'} ${a.label}</td>
-    <td class="mut">${a.calls} call${a.calls===1?'':'s'}</td>
-    <td>${fmt(a.input)} in</td><td>${fmt(a.output)} out</td>
-    <td>${a.cost_usd?usd(a.cost_usd,4):'<span class="mut">—</span>'}</td></tr>`).join('');
+    ${j.started.replace('T',' ')} — starting up.</p>`;
+  const ag=p.agents||[];
+  const done=ag.filter(a=>a.state==='done').length, tot=ag.length;
+  const ICON={running:'run',done:'done',error:'err',pending:'',skipped:'skip'};
+  let rows='', stage=null;
+  for(const a of ag){
+    if(a.stage!==stage){stage=a.stage;
+      rows+=`<tr><td class="stage" colspan="5">${stage}</td></tr>`;}
+    const st=a.state||'pending';
+    rows+=`<tr class="${st==='pending'?'pending':''}">
+      <td><span class="dot ${ICON[st]||''}"></span>${a.label||a.agent}</td>
+      <td class="mut">${st==='pending'?'waiting':st==='skipped'?'not used':st}</td>
+      <td>${a.calls?fmt(a.calls):'<span class="mut">—</span>'}</td>
+      <td>${a.input?fmt(a.input)+' / '+fmt(a.output):'<span class="mut">—</span>'}</td>
+      <td>${a.cost_usd?usd(a.cost_usd,4):'<span class="mut">—</span>'}</td></tr>`;
+  }
   const t=p.totals||{};
-  return `<p class="mut">Analysing <b>${j.ticker}</b> · ${p.elapsed_s}s elapsed ·
-    ${p.llm_calls} model call${p.llm_calls===1?'':'s'}
-    ${p.current?`· currently <b>${(p.agents.find(a=>a.agent===p.current)||{}).label||p.current}</b>`:''}</p>
-   ${rows?`<div class="wrap"><table><thead><tr><th>Agent</th><th>Calls</th>
-     <th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+  const cur=ag.find(a=>a.agent===p.current);
+  return `<p class="mut">Analysing <b>${j.ticker}</b> · ${done}/${tot} agents ·
+    ${p.elapsed_s}s · ${p.llm_calls} model call${p.llm_calls===1?'':'s'}
+    ${cur?`· running <b>${cur.label}</b>`:''}</p>
+   <div class="bar" style="margin:6px 0 12px"><i style="width:${tot?done/tot*100:0}%"></i></div>
+   ${p.llm_calls?'':'<p class="mut">Gathering market data — no model calls yet.</p>'}
+   <div class="wrap"><table><thead><tr><th>Agent</th><th>State</th><th>Calls</th>
+     <th>Tokens in / out</th><th>Cost</th></tr></thead>
      <tbody>${rows}</tbody>
-     <tfoot><tr><th>Total</th><th>${p.llm_calls}</th>
-       <th>${fmt(t.input_tokens||0)}</th><th>${fmt(t.output_tokens||0)}</th>
-       <th>${p.cost_usd?usd(p.cost_usd,4):'—'}</th></tr></tfoot></table></div>`
-    :'<p class="mut">Gathering market data — no model calls yet.</p>'}`;
+     <tfoot><tr><th>Total</th><th></th><th>${p.llm_calls}</th>
+       <th>${fmt(t.input_tokens||0)} / ${fmt(t.output_tokens||0)}</th>
+       <th>${p.cost_usd?usd(p.cost_usd,4):'—'}</th></tr></tfoot></table></div>`;
+}
+
+// minimal markdown -> HTML. The reports are plain prose with **bold**, ## headings and
+// - bullets; a full parser would be overkill and a dependency we do not want.
+function md(t){
+  const esc=x=>x.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  const out=[]; let ul=false;
+  for(let line of esc(t||'').split('\n')){
+    const raw=line.trim();
+    if(!raw){ if(ul){out.push('</ul>');ul=false;} continue; }
+    let h=raw.match(/^#{1,6}\s+(.*)$/);
+    if(h){ if(ul){out.push('</ul>');ul=false;} out.push(`<h3>${inl(h[1])}</h3>`); continue; }
+    let li=raw.match(/^[-*•]\s+(.*)$/)||raw.match(/^\d+[.)]\s+(.*)$/);
+    if(li){ if(!ul){out.push('<ul>');ul=true;} out.push(`<li>${inl(li[1])}</li>`); continue; }
+    if(ul){out.push('</ul>');ul=false;}
+    out.push(`<p>${inl(raw)}</p>`);
+  }
+  if(ul)out.push('</ul>');
+  function inl(x){return x.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g,'$1<em>$2</em>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>');}
+  return out.join('');
+}
+
+// pull the headline fields out of the decision text for an at-a-glance summary
+function verdict(txt){
+  const grab=k=>{const m=(txt||'').match(new RegExp('\\*\\*'+k+'\\*\\*\\s*:?\\s*([^\n]+)','i'));
+    return m?m[1].replace(/^\**|\**$/g,'').trim():null;};
+  const r=grab('Rating')||grab('Recommendation')||grab('Decision');
+  const pt=grab('Price Target'), th=grab('Time Horizon');
+  if(!r&&!pt&&!th) return '';
+  const cls=/buy|overweight/i.test(r||'')?'pos':/sell|underweight/i.test(r||'')?'neg':'';
+  return `<div class="verdict">
+    ${r?`<div><span>Rating</span><b class="${cls}">${r}</b></div>`:''}
+    ${pt?`<div><span>Price target</span><b>${pt}</b></div>`:''}
+    ${th?`<div><span>Horizon</span><b style="font-size:14px">${th}</b></div>`:''}
+  </div>`;
 }
 
 async function showReport(t){
   const r=await get('/api/analysis/'+t);
   if(!r.sections||!r.sections.length){$('#rep').innerHTML='';return;}
-  const esc=x=>(x||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  const dec=r.sections.find(s=>s.kind==='ta:decision');
+  const byStage={};
+  for(const s of r.sections){
+    const st=({decision:'Decision',trader:'Trading',research_mgr:'Research debate',
+      bull:'Research debate',bear:'Research debate',fundamentals:'Analysts',
+      market:'Analysts',news:'Analysts',sentiment:'Analysts',
+      risk_aggr:'Risk debate',risk_neutral:'Risk debate',risk_cons:'Risk debate'
+    })[s.kind.replace('ta:','')]||'Other';
+    (byStage[st]=byStage[st]||[]).push(s);
+  }
+  const order=['Decision','Trading','Research debate','Risk debate','Analysts','Other'];
   $('#rep').innerHTML=`<div class="card">
-   <h2>${t} — report</h2>
-   <p class="mut">${(r.created_at||'').replace('T',' ').slice(0,19)} ·
-    <code>${esc(r.source)}</code><br>
-    Generated by TradingAgents, a third-party multi-agent model. Research output —
-    <b>not a recommendation</b>, and not checked by Trans.</p>
-   ${r.sections.map((s,i)=>`<details ${i===0?'open':''} style="margin-bottom:8px">
-     <summary style="cursor:pointer;font-weight:600;padding:5px 0">${s.label}</summary>
-     <pre style="white-space:pre-wrap">${esc(s.content)}</pre></details>`).join('')}
+   <div class="rep-head">
+     <div><h2 style="margin:0">${t} — research report</h2>
+       <p class="mut" style="margin:6px 0 0">${(r.created_at||'').replace('T',' ').slice(0,19)}
+        · <code>${(r.source||'').replace(/[<>&]/g,'')}</code></p></div>
+     <button class="act ghost" id="closerep">Close</button>
+   </div>
+   ${dec?verdict(dec.content):''}
+   <p class="mut">Generated by TradingAgents, a third-party multi-agent model.
+    Research output — <b>not a recommendation</b>, and not checked by Trans.</p>
+   ${order.filter(k=>byStage[k]).map(k=>`
+     <div class="stage">${k}</div>
+     ${byStage[k].map((s,i)=>`<details ${k==='Decision'?'open':''} style="margin-bottom:6px">
+       <summary style="cursor:pointer;font-weight:600;padding:6px 0">${s.label}</summary>
+       <div class="md">${md(s.content)}</div></details>`).join('')}`).join('')}
   </div>`;
+  $('#closerep').onclick=()=>{STATE.openReport=null;$('#rep').innerHTML='';};
+  $('#rep').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 boot();

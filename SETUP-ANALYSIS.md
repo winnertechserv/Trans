@@ -152,10 +152,33 @@ settled when it ends. If a provider reports no usage, the run is logged as
 
 ## Live progress
 
-While a run is in flight the Research tab refreshes every 5 seconds and shows which agent
-is working, how many model calls have happened, and the tokens and cost each agent has
-spent so far. Before the first model call it says it is gathering market data — that
-phase takes a minute or two and involves no LLM spend.
+While a run is in flight the Research tab refreshes every 5 seconds and shows the
+**whole pipeline up front** — all twelve agents, grouped by stage, each marked waiting,
+running, done or not used:
+
+| Stage | Agents |
+|---|---|
+| Analysts | Market, Sentiment, News, Fundamentals |
+| Research debate | Bull researcher, Bear researcher, Research manager |
+| Trading | Trader |
+| Risk debate | Aggressive, Conservative, Neutral |
+| Decision | Portfolio manager |
+
+Names come from the graph definition in the installed clone, so the roster matches what
+TradingAgents actually registers. A progress bar tracks agents completed, and each row
+fills in its calls, tokens and cost as it finishes. Analysts are selectable in
+TradingAgents, so any that never run are marked "not used" at the end rather than left
+waiting forever.
+
+Before the first model call the tab says it is gathering market data — that phase takes a
+minute or two and costs nothing.
+
+## Reading a report
+
+Reports open with a **verdict strip** — rating, price target and time horizon pulled out
+of the decision text — then the sections grouped by stage, with the decision expanded and
+everything else collapsed. Markdown is rendered rather than dumped as raw text, and
+**Close** dismisses the report.
 
 ## Cost estimates are estimates
 

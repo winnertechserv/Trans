@@ -48,17 +48,27 @@ def _find_section(outdir, dirsuffix, filename):
     return p if os.path.exists(p) else None
 LABEL = {k: (lbl, order) for _, _, k, lbl, order in SECTIONS}
 
-# LangGraph node name -> what to show a human
-AGENT_LABEL = {
-    "market_analyst": "Market analyst", "fundamentals_analyst": "Fundamentals analyst",
-    "news_analyst": "News analyst", "sentiment_analyst": "Sentiment analyst",
-    "social_media_analyst": "Social analyst",
-    "bull_researcher": "Bull researcher", "bear_researcher": "Bear researcher",
-    "research_manager": "Research manager", "trader": "Trader",
-    "risky_analyst": "Risk — aggressive", "neutral_analyst": "Risk — neutral",
-    "safe_analyst": "Risk — conservative", "risk_judge": "Risk judge",
-    "unattributed": "Unattributed",
-}
+# The full pipeline, in execution order, with the node names TradingAgents actually
+# registers (read from tradingagents/graph/setup.py in the installed clone). Showing the
+# whole roster up front means a run reads as progress through a known list rather than a
+# table that grows mysteriously. Analysts are selectable in TradingAgents, so some may
+# never run — they are marked skipped at the end rather than left hanging.
+PIPELINE = [
+    ("Market Analyst",       "Market analyst",        "Analysts"),
+    ("Sentiment Analyst",    "Sentiment analyst",     "Analysts"),
+    ("News Analyst",         "News analyst",          "Analysts"),
+    ("Fundamentals Analyst", "Fundamentals analyst",  "Analysts"),
+    ("Bull Researcher",      "Bull researcher",       "Research debate"),
+    ("Bear Researcher",      "Bear researcher",       "Research debate"),
+    ("Research Manager",     "Research manager",      "Research debate"),
+    ("Trader",               "Trader",                "Trading"),
+    ("Aggressive Analyst",   "Risk — aggressive",     "Risk debate"),
+    ("Conservative Analyst", "Risk — conservative",   "Risk debate"),
+    ("Neutral Analyst",      "Risk — neutral",        "Risk debate"),
+    ("Portfolio Manager",    "Portfolio manager",     "Decision"),
+]
+AGENT_LABEL = {n: lbl for n, lbl, _ in PIPELINE}
+AGENT_STAGE = {n: st for n, _, st in PIPELINE}
 
 _jobs = {}
 _lock = threading.Lock()
@@ -263,9 +273,23 @@ def _with_progress(job):
             deep = job.get("model") or C.ta_models()[0]
             paid = C.tradingagents().get("backend") != "ollama"
             for a in prog.get("agents", []):
-                a["label"] = AGENT_LABEL.get(a["agent"], a["agent"].replace("_", " ").title())
+                a["label"] = AGENT_LABEL.get(a["agent"], a["agent"])
                 a["cost_usd"] = (CO.estimate(deep, a["input"], a["output"]).get("cost_usd")
                                  if paid and (a["input"] or a["output"]) else 0.0)
+            seen = {a["agent"]: a for a in prog.get("agents", [])}
+            merged, extra = [], []
+            for node, lbl, stage in PIPELINE:
+                a = seen.pop(node, None)
+                merged.append(a if a else {"agent": node, "input": 0, "output": 0,
+                                           "calls": 0, "state": "pending",
+                                           "label": lbl, "stage": stage, "cost_usd": 0.0})
+                if a: a["stage"] = stage
+            for node, a in seen.items():          # anything we did not anticipate
+                a["stage"] = "Other"; a.setdefault("label", node); extra.append(a)
+            prog["agents"] = merged + extra
+            if prog.get("phase") == "finished":
+                for a in prog["agents"]:
+                    if a["state"] == "pending": a["state"] = "skipped"
             t = prog.get("totals", {})
             prog["cost_usd"] = (CO.estimate(deep, t.get("input_tokens", 0),
                                             t.get("output_tokens", 0)).get("cost_usd")
