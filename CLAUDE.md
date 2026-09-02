@@ -88,6 +88,12 @@ regenerates them on every start; if you need them sooner, run `python3 app/sync.
   `markets.canonical_symbol()`. If a holding shows no XIRR, suspect a rename first and
   check whether an old symbol's net quantity completes it — add confirmed renames to
   `markets.RENAMES`, or per-user ones to `ticker_aliases` in `config.json`.
+- **Tradebook re-uploads are safe.** Dedupe is `INSERT OR IGNORE` on
+  `zt:<trade_id>:<date>:<raw symbol>` — the *raw* symbol from the CSV, never the
+  normalised one, so re-uploading the same or overlapping exports adds nothing even if
+  `RENAMES`/`ticker_aliases` changed in between. The flip side: a rename added later does
+  not reach rows already stored, because the whole row is skipped. Run
+  `python3 app/ingest.py remap` for that — re-uploading will not do it.
 - **The Zerodha tradebook is the EQ segment only.** Bonds and SGBs bought in the primary
   market, and shares received from a demerger, have no purchase row and never will. They
   fall back to the broker's average cost for a basis and honestly report no XIRR. This is

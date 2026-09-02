@@ -74,7 +74,9 @@ def ingest_zerodha_tradebook(c, paths):
     """Zerodha Console tradebook CSVs -> transactions.
 
     Kite's API serves one day of orders, so this export is the only route to history.
-    Three traps, all found in the real files:
+    Four traps, all found in the real files:
+      * The dedupe key must use the raw symbol, not the normalised one, or adding a
+        rename later re-imports every affected trade under both names.
       * trade_id is NOT globally unique — id 26030407 belongs to both a 2022 HEROMOTOCO
         trade and a 2021 FILATEX one. The dedupe key is (trade_id, date, symbol).
       * Symbols carry an NSE series code in holdings but not in the tradebook
@@ -90,14 +92,20 @@ def ingest_zerodha_tradebook(c, paths):
         with open(path, newline="", encoding="utf-8-sig") as fh:
             rows = list(csv.DictReader(fh))
         for r in rows:
-            sym = MK.canonical_symbol(r.get("symbol", ""), aliases)
+            raw = (r.get("symbol") or "").strip().upper()
+            sym = MK.canonical_symbol(raw, aliases)
             qty = float(r.get("quantity") or 0)
             px = float(r.get("price") or 0)
             side = (r.get("trade_type") or "").strip().lower()
             date = (r.get("trade_date") or "")[:10]
             if not (sym and qty and side in ("buy", "sell") and date):
                 continue
-            oid = f"zt:{r.get('trade_id','')}:{date}:{sym}"
+            # Key on the RAW symbol from the file, never the resolved one: resolution
+            # depends on markets.RENAMES and config ticker_aliases, and if either changes
+            # the same trade would hash to a new id and import a second time. The raw
+            # symbol is whatever Zerodha wrote and never moves. Verified unique across
+            # 4,354 real trades; trade_id alone is not (one id is reused).
+            oid = f"zt:{r.get('trade_id','')}:{date}:{raw}"
             n += _ins2(c, oid, date, sym, side, qty, px, None, 0.0,
                        _kite_asset(sym), "user", "zerodha", "INR")
         seen_files.append(f"{os.path.basename(path)}:{len(rows)}")
@@ -229,11 +237,38 @@ def bootstrap(c):
     _log(c, "bootstrap", "ok", total, f"{len(pending)} envelope(s)")
     return total
 
+def remap_symbols(c):
+    """Re-apply canonical_symbol to stored Zerodha rows.
+
+    Dedupe is INSERT OR IGNORE, so a trade already in the table is skipped whole — a
+    rename added to markets.RENAMES or config ticker_aliases after the import does not
+    reach it. Re-uploading the CSV will not help either, and should not: the dedupe key
+    is the raw symbol precisely so that re-uploads stay no-ops. This walks the existing
+    rows instead. Safe to run repeatedly; it only ever rewrites the ticker column.
+    """
+    al = CFG.ticker_aliases()
+    moved = []
+    for table, extra in (("transactions", ""), ("positions", "")):
+        for r in c.execute(f"SELECT rowid, ticker FROM {table} WHERE broker='zerodha'").fetchall():
+            canon = MK.canonical_symbol(r["ticker"], al)
+            if canon != r["ticker"]:
+                c.execute(f"UPDATE {table} SET ticker=? WHERE rowid=?", (canon, r["rowid"]))
+                moved.append(f"{table}: {r['ticker']} -> {canon}")
+    c.commit()
+    return moved
+
+
 if __name__ == "__main__":
     c = D.init()
     cmd = sys.argv[1] if len(sys.argv) > 1 else "inbox"
     if cmd == "bootstrap":
         print("transaction rows inserted:", bootstrap(c))
+    elif cmd == "remap":
+        m = remap_symbols(c)
+        print(f"remapped {len(m)} row(s)")
+        for line in m[:20]:
+            print("  " + line)
+        sys.exit(0)
     else:
         t, f = run_inbox(c); print("ingested:", t, f)
     for r in c.execute("SELECT type,COUNT(*) n,ROUND(SUM(COALESCE(amount,quantity*price)),2) v"
