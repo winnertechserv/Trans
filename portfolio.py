@@ -151,6 +151,8 @@ class TickerResult:
     first_activity: date | None
     last_activity: date | None
     n_flows: int
+    days_held: int | None = None   # days actually owning shares, not elapsed span
+    episodes: int | None = None    # times built up from nothing; None if unknowable
 
     @property
     def net_profit(self) -> float:
@@ -165,6 +167,13 @@ class TickerResult:
     @property
     def is_open(self) -> bool:
         return abs(self.open_quantity) > 1e-9
+
+    @property
+    def re_entered(self) -> bool:
+        """Sold out completely and bought back in at least once. XIRR weights flows by
+        time, exponentially, so for these the rate is set by whichever episode came
+        first and is close to blind to the capital at risk today."""
+        return bool(self.episodes and self.episodes > 1)
 
     @property
     def holding_days(self) -> int | None:
@@ -224,6 +233,50 @@ def load_positions(path: str | Path) -> dict[str, Position]:
     return out
 
 
+def _holding_timeline(txns, open_qty, as_of):
+    """Days actually holding shares, and how many separate times the position was built
+    from nothing.
+
+    Elapsed first-to-last overstates the holding period for anything you exit and
+    re-enter. MAZDOCK spans 41 months but was flat for 21 of them across two gaps; an
+    annualised rate quoted against the elapsed span reads as one long steady hold when
+    it was three short trades.
+
+    Returns (None, None) when the derived share count cannot be trusted, which happens
+    for anything that split or changed ADR ratio: order history keeps pre-split
+    quantities while sells are post-split, so the running count drifts and can go
+    negative. BEL sells 165 shares it never appears to have bought and lands at -158,
+    which read as two exits and a re-entry when it is one steady accumulation. Two
+    signals catch it — a negative excursion, and a final derived count that disagrees
+    with what the broker says is held. Guessing here would put a wrong "re-entered" flag
+    on a position that was never sold, so the honest answer is to say nothing.
+    """
+    days = 0
+    episodes = 0
+    qty = 0.0
+    trustworthy = True
+    prev = txns[0].when
+    for t in txns:
+        if qty > 1e-9:
+            days += (t.when - prev).days
+        if t.type == "buy":
+            if qty <= 1e-9:
+                episodes += 1
+            qty += t.quantity
+        elif t.type == "sell":
+            qty -= t.quantity
+        if qty < -1e-9:
+            trustworthy = False
+        prev = t.when
+    if abs(open_qty) > 1e-9:
+        days += (as_of - prev).days
+    if abs(qty - open_qty) > 1e-6:
+        trustworthy = False
+    if not trustworthy:
+        return None, None
+    return days, max(episodes, 1)
+
+
 def analyse(
     transactions: Iterable[Transaction],
     positions: dict[str, Position] | None = None,
@@ -271,11 +324,14 @@ def analyse(
         first_all = first if first_all is None else min(first_all, first)
         last_all = last if last_all is None else max(last_all, last)
 
+        days_held, episodes = _holding_timeline(txns, open_qty, as_of)
+
         results.append(TickerResult(
             ticker=ticker, xirr=rate, note=note,
             invested=invested, proceeds=proceeds, dividends=dividends,
             market_value=mv, open_quantity=open_qty,
             first_activity=first, last_activity=last, n_flows=len(flows),
+            days_held=days_held, episodes=episodes,
         ))
 
         all_flows.extend(f for f in flows if f.kind != "terminal")

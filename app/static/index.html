@@ -28,6 +28,8 @@ th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;lett
 cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
 tbody tr:hover{background:var(--chip)}
 .pos{color:var(--pos)}.neg{color:var(--neg)}.mut{color:var(--mut)}
+.chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
+  font-size:10px;cursor:help}
 .wrap{overflow-x:auto}
 .bar{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;min-width:60px}
 .bar i{display:block;height:100%;background:var(--acc)}
@@ -245,18 +247,35 @@ function overview(){
 // True, and useless. Ranking raw XIRR also surfaced positions sold years ago, which are
 // not "movers" in any sense a portfolio dashboard means. So: current holdings only, and
 // only once there is enough time for an annual rate to mean something.
+function reChip(x){
+  return x.re_entered ? ` <span class="chip re" title="Sold out and bought back in `
+    +`${x.episodes} separate times. XIRR weights flows by time, so it reflects the first `
+    +`episode far more than the money at risk today.">re-entered \u00d7${x.episodes}</span>` : '';
+}
+// Prefer days actually holding shares; fall back to the elapsed span, marked, when a
+// split makes the derived share count untrustworthy.
+function heldDays(x){ return x.days_held ?? x.holding_days; }
+function heldCell(x){
+  const d=heldDays(x); if(d==null) return '—';
+  return (x.days_held==null?'~':'')+d;
+}
+
 const MOVER_MIN_DAYS=90;
 function movers(r){
-  const ok=r.filter(x=>x.xirr!=null && x.market_value>0 && (x.holding_days||0)>=MOVER_MIN_DAYS)
+  const ok=r.filter(x=>x.xirr!=null && x.market_value>0 && (heldDays(x)||0)>=MOVER_MIN_DAYS)
             .sort((a,b)=>b.xirr-a.xirr);
   const skipped=r.filter(x=>x.xirr!=null).length-ok.length;
   if(!ok.length) return `<p class="mut">No holding has been open ${MOVER_MIN_DAYS} days yet.</p>`;
-  const row=x=>`<tr><td>${x.ticker}</td><td class="${x.xirr>=0?'pos':'neg'}">${pct(x.xirr,1)}</td>`
-              +`<td class="mut" style="text-align:right;font-size:11px">${Math.round(x.holding_days/30)}mo</td></tr>`;
+  const row=x=>`<tr><td>${x.ticker}${reChip(x)}</td>`
+              +`<td class="${x.xirr>=0?'pos':'neg'}">${pct(x.xirr,1)}</td>`
+              +`<td class="mut" style="text-align:right;font-size:11px">`
+              +`${x.days_held==null?'~':''}${Math.round(heldDays(x)/30)}mo held</td></tr>`;
   const top=ok.slice(0,5), bot=ok.slice(-5).filter(x=>!top.includes(x)).reverse();
   return `<table><tbody>${top.map(row).join('')}${bot.map(row).join('')}</tbody></table>`
-    +`<p class="mut" style="margin-top:6px;font-size:11px">Open holdings held ${MOVER_MIN_DAYS}+ days.`
-    +(skipped?` ${skipped} excluded — closed or too recent to annualise.`:'')+`</p>`;
+    +`<p class="mut" style="margin-top:6px;font-size:11px">Open holdings, ${MOVER_MIN_DAYS}+ days`
+    +` actually holding shares.`
+    +(skipped?` ${skipped} excluded — closed or too recent to annualise.`:'')
+    +` A re-entered position's rate is set mostly by its first episode.</p>`;
 }
 
 let sortKey='market_value',sortDir=-1;
@@ -265,21 +284,33 @@ function holdings(){
     const A=a[sortKey],B=b[sortKey];
     if(A==null)return 1; if(B==null)return -1;
     return (A>B?1:A<B?-1:0)*sortDir;});
-  const cols=[['ticker','Ticker'],['sector_label','Sector'],['xirr','XIRR'],['weight','Weight'],
-    ['invested','Invested'],['market_value','Value'],['dividends','Divs'],
-    ['net_profit','Net P/L'],['simple_return','Simple'],['holding_days','Days'],['n_flows','Flows']];
+  // Simple sits next to XIRR on purpose: for a position you exited and re-entered they
+  // can disagree wildly, and the pair is the tell. MAZDOCK is +438% annualised and
+  // +18.6% simple, because XIRR weights by time and the first episode was the small one.
+  const cols=[['ticker','Ticker'],['sector_label','Sector'],['xirr','XIRR'],
+    ['simple_return','Simple'],['weight','Weight'],['invested','Invested'],
+    ['market_value','Value'],['dividends','Divs'],['net_profit','Net P/L'],
+    ['days_held','Held'],['n_flows','Flows']];
   $('#main').innerHTML=`<div class="card"><h2>All holdings — click a header to sort</h2>
    <div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
     `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
-     <td><b>${x.ticker}</b>${x.open?'':' <span class="chip">closed</span>'}</td>
+     <td><b>${x.ticker}</b>${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
      <td class="mut">${x.sector_label}</td>
-     <td class="${sign(x.xirr)}">${pct(x.xirr,1)}</td><td>${pct(x.weight,1)}</td>
+     <td class="${sign(x.xirr)}">${pct(x.xirr,1)}</td>
+     <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
+     <td>${pct(x.weight,1)}</td>
      <td>${usd(x.invested)}</td><td>${usd(x.market_value)}</td><td>${usd(x.dividends,2)}</td>
      <td class="${sign(x.net_profit)}">${usd(x.net_profit)}</td>
-     <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
-     <td class="mut">${x.holding_days??'—'}</td><td class="mut">${x.n_flows}</td></tr>`).join('')}
-   </tbody></table></div></div>`;
+     <td class="mut">${heldCell(x)}</td><td class="mut">${x.n_flows}</td></tr>`).join('')}
+   </tbody></table>
+   <p class="mut" style="font-size:11px;margin-top:8px">
+     <b class="chip re">re-entered</b> sold out completely and bought back in — XIRR is set
+     mostly by the earliest episode, so read <b>Simple</b> alongside it.
+     <b>Held</b> counts days actually owning shares, not first-to-last span;
+     <b>~</b> means the share count is unreliable (a split left pre-split quantities in
+     the order history) so the elapsed span is shown instead.</p>
+   </div></div>`;
   $('#main').querySelector('thead').onclick=e=>{const k=e.target.dataset.k; if(!k)return;
     if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=-1;} holdings();};
 }

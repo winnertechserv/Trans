@@ -49,7 +49,8 @@ def results(c, as_of=None, market=None):
             "quantity": t.open_quantity, "n_flows": t.n_flows,
             "first": t.first_activity.isoformat() if t.first_activity else None,
             "last": t.last_activity.isoformat() if t.last_activity else None,
-            "holding_days": t.holding_days,
+            "holding_days": t.holding_days, "days_held": t.days_held,
+            "episodes": t.episodes, "re_entered": t.re_entered,
             "sector": S.sector_of(t.ticker), "sector_label": S.label(S.sector_of(t.ticker)),
         })
     # A market can have holdings but no transaction history — Zerodha's API only serves
@@ -76,7 +77,8 @@ def results(c, as_of=None, market=None):
             "invested": inv, "proceeds": 0.0, "dividends": 0.0, "market_value": val,
             "net_profit": val - inv, "simple_return": (val / inv - 1) if inv else None,
             "open": True, "quantity": p["quantity"], "n_flows": 0,
-            "first": None, "last": None, "holding_days": None,
+            "first": None, "last": None, "holding_days": None, "days_held": None,
+            "episodes": None, "re_entered": False,
             "asset": p["asset"], "exchange": p["exchange"],
             "sector": S.sector_of(p["ticker"]),
             "sector_label": S.label(S.sector_of(p["ticker"])),
