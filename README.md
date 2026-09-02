@@ -26,6 +26,18 @@ Data lives in a SQLite file you own. Claude Code is the only tool needed to oper
 | **Research** | optional TradingAgents reports per holding (see below) |
 | **Sync & cost** | sync prompts, backup and restore, token/cost ledger |
 
+Every tab has its own URL, so views can be bookmarked and shared, and browser
+back/forward work:
+
+| URL | View |
+|---|---|
+| `/` | Overview |
+| `/holdings` `/daily-buys` `/dividends` `/analysis` `/sync` | the matching tab |
+| `/fundamentals` · `/fundamentals/MSFT` | Fundamentals, optionally on one holding |
+| `/research` · `/research/MSFT` | Research, optionally with a report open |
+
+Refreshing a deep link restores that exact view. Unknown paths fall back to Overview.
+
 ## How it works
 
 ```

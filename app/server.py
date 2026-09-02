@@ -29,10 +29,14 @@ class H(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
         p = u.path
         try:
-            if p in ("/", "/index.html"):
-                return self._send(200, open(os.path.join(STATIC, "index.html"), "rb").read(), "text/html; charset=utf-8")
+            # Client-side routing: every tab has a real URL (/holdings, /research/MSFT),
+            # so serve the app shell for any non-API path that is not a file request.
+            # Deep links, bookmarks, back/forward and refresh then all work.
             if not p.startswith("/api/"):
-                return self._send(404, b"not found", "text/plain")
+                if "." in os.path.basename(p) and p != "/index.html":
+                    return self._send(404, b"not found", "text/plain")
+                return self._send(200, open(os.path.join(STATIC, "index.html"), "rb").read(),
+                                  "text/html; charset=utf-8")
             c = D.connect()
             if p == "/api/overview":
                 try: B.maybe_auto_backup()

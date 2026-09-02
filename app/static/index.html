@@ -121,13 +121,50 @@ const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/js
   body:JSON.stringify(b||{})}).then(r=>r.json());
 let STATE={};
 
-const TABS=[['overview','Overview'],['holdings','Holdings'],['buys','Daily buys'],
- ['div','Dividends'],['analysis','Analysis'],['fund','Fundamentals'],
- ['research','Research'],['sync','Sync & cost']];
+// [key, label, url path]. Overview lives at / so the root is not a redirect.
+const TABS=[['overview','Overview','/'],['holdings','Holdings','/holdings'],
+ ['buys','Daily buys','/daily-buys'],['div','Dividends','/dividends'],
+ ['analysis','Analysis','/analysis'],['fund','Fundamentals','/fundamentals'],
+ ['research','Research','/research'],['sync','Sync & cost','/sync']];
+const PATH_OF=Object.fromEntries(TABS.map(([k,,p])=>[k,p]));
 let tab='overview';
-$('#nav').innerHTML=TABS.map(([k,l])=>`<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
-$('#nav').onclick=e=>{const t=e.target.dataset.t; if(!t)return; tab=t;
-  [...$('#nav').children].forEach(b=>b.setAttribute('aria-selected',b.dataset.t===t)); render();};
+
+// Two tabs carry a ticker in the URL (/fundamentals/MSFT, /research/MSFT) so a
+// specific holding or report can be linked to directly.
+const TICKER_TABS={fund:'/fundamentals',research:'/research'};
+
+function routeFrom(pathname){
+  const seg=decodeURIComponent(pathname).replace(/\/+$/,'').split('/').filter(Boolean);
+  if(!seg.length) return {tab:'overview',ticker:null};
+  const hit=TABS.find(([,,p])=>p==='/'+seg[0]);
+  if(!hit) return {tab:'overview',ticker:null};
+  return {tab:hit[0], ticker:seg[1]?seg[1].toUpperCase():null};
+}
+
+function urlFor(t,ticker){
+  const base=PATH_OF[t]||'/';
+  return (ticker && TICKER_TABS[t]) ? `${TICKER_TABS[t]}/${ticker}` : base;
+}
+
+function applyRoute(r,{push=false,replace=false}={}){
+  tab=r.tab;
+  if(r.tab==='fund' && r.ticker) STATE.fundTicker=r.ticker;
+  if(r.tab==='research') STATE.openReport=r.ticker||null;
+  [...$('#nav').children].forEach(b=>b.setAttribute('aria-selected',b.dataset.t===tab));
+  document.title = tab==='overview' ? 'Trans'
+    : `Trans · ${(TABS.find(x=>x[0]===tab)||[])[1]}${r.ticker?' · '+r.ticker:''}`;
+  const u=urlFor(r.tab,r.ticker);
+  if(push && location.pathname!==u) history.pushState(r,'',u);
+  else if(replace) history.replaceState(r,'',u);
+  render();
+}
+
+function go(t,ticker){ applyRoute({tab:t,ticker:ticker||null},{push:true}); }
+
+$('#nav').innerHTML=TABS.map(([k,l,p])=>
+  `<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
+$('#nav').onclick=e=>{const t=e.target.dataset.t; if(!t)return; go(t,null);};
+window.addEventListener('popstate',e=>applyRoute(e.state||routeFrom(location.pathname)));
 
 async function boot(){
   STATE.ov=await get('/api/overview');
@@ -138,7 +175,7 @@ async function boot(){
     ['Dividends',usd(o.dividends,2)],
     ['Data through',h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')]
   ].map(([s,v])=>`<div class="kpi"><span>${s}</span><b>${v}</b></div>`).join('');
-  render();
+  applyRoute(routeFrom(location.pathname),{replace:true});   // deep link / refresh
 }
 function render(){({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();}
 
@@ -290,7 +327,7 @@ async function fund(){
    </tbody></table></div>
    ${f.coverage<1?`<p class="mut" style="margin-top:12px">Missing metrics need a fundamentals
      sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>`;
-  $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;fund();};
+  $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;go('fund',e.target.value);};
 }
 
 async function syncv(){
@@ -452,7 +489,7 @@ async function research(){
 
   $('#main').onclick=async e=>{
     const op=e.target.dataset&&e.target.dataset.open;
-    if(op){STATE.openReport=op;showReport(op);return;}
+    if(op){go('research',op);return;}
     if(e.target.id==='runr'){
       const t=$('#rsel').value;
       const mdl=$('#rmodel')?$('#rmodel').value:null;
@@ -710,7 +747,8 @@ async function showReport(t){
          ></summary>
        <div class="md">${md(s.content)}</div></details>`).join('')}`).join('')}
   </div>`;
-  $('#closerep').onclick=()=>{STATE.openReport=null;$('#rep').innerHTML='';};
+  $('#closerep').onclick=()=>{STATE.openReport=null;$('#rep').innerHTML='';
+    history.pushState({tab:'research',ticker:null},'','/research');};
   $('#rep').onclick=async e=>{
     const k=e.target.dataset&&e.target.dataset.copy;
     if(k){
