@@ -73,7 +73,8 @@ background:var(--chip);border-radius:9px;padding:13px 16px;margin:12px 0}
 .verdict b{display:block;font-size:19px;letter-spacing:-.02em}
 .verdict span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .md{line-height:1.6} .md h3{font-size:13px;margin:14px 0 6px}
-.md p{margin:9px 0} .md ul{margin:8px 0;padding-left:20px} .md li{margin:3px 0}
+.md p{margin:9px 0} .md ul,.md ol{margin:8px 0;padding-left:22px}
+.md ol li{margin:6px 0} .md li{margin:3px 0}
 .md strong{font-weight:650}
 .rep-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 .rating{display:inline-block;padding:5px 14px;border-radius:8px;font-weight:700;
@@ -85,6 +86,7 @@ font-size:17px;letter-spacing:-.01em}
 .pill.hi{background:#1a7f4b1f;color:var(--pos)}
 .pill.mid{background:#8a5a001f;color:var(--warn)}
 .pill.lo{background:#b3352b1f;color:var(--neg)}
+.warnw{color:var(--warn)}
 .md table{margin:10px 0;font-size:13px}
 .md th{position:static;background:transparent;cursor:default}
 .md td,.md th{border-bottom:1px solid var(--line);padding:5px 9px}
@@ -544,13 +546,26 @@ function md(t){
     if(h){ closeUl(); out.push(`<h3>${inl(h[1])}</h3>`); i++; continue; }
     const li=raw.match(/^[-*•]\s+(.*)$/)||raw.match(/^\d+[.)]\s+(.*)$/);
     if(li){ if(!ul){out.push('<ul>');ul=true;} out.push(`<li>${inl(li[1])}</li>`); i++; continue; }
-    closeUl(); out.push(`<p>${inl(raw)}</p>`); i++;
+    closeUl();
+    const en=splitEnum(raw);
+    if(en){
+      if(en.lead) out.push(`<p>${inl(en.lead)}</p>`);
+      out.push(`<ol>${en.items.map(it=>`<li>${inl(it)}</li>`).join('')}</ol>`);
+    } else out.push(`<p>${inl(raw)}</p>`);
+    i++;
   }
   closeUl(); return out.join('');
 }
 
-// tint the judgement words so a wall of prose can be skimmed
+// Tint the judgement words so a wall of prose can be skimmed.
+// Case-sensitive on purpose: the reports capitalise verdicts ("Rating: Hold",
+// "shift toward Overweight") but use the same words lowercase in ordinary prose
+// ("investors hold", "add capacity"), where colouring them would be noise.
+// Bullish/Bearish are the exception — always a judgement, so matched either case.
 function colorise(x){
+  const POS=/\b(Strong Buy|Buy|Overweight|Outperform|Accumulate|Add to)\b/g;
+  const NEG=/\b(Strong Sell|Sell|Underweight|Underperform|Trim|Reduce|Avoid|Exit)\b/g;
+  const NEU=/\b(Hold|Neutral|Market Perform|Maintain)\b/g;
   return x
     .replace(/\b(Confidence|Conviction)\b(\s*:?\s*)(High|Medium|Moderate|Low)\b/gi,
       (m,k,sep,v)=>`${k}${sep}<span class="pill ${/high/i.test(v)?'hi':/low/i.test(v)?'lo':'mid'}">${v}</span>`)
@@ -558,8 +573,31 @@ function colorise(x){
       const v=parseFloat(n), d=den?parseFloat(den):10, r=v/d;
       const cls=r>=0.66?'hi':r<=0.33?'lo':'mid';
       return `Score${sep}<span class="pill ${cls}">${n}${rest||''}</span>`;})
-    .replace(/\b(Strong Buy|Buy|Overweight|Bullish)\b/g,'<span class="pos"><strong>$1</strong></span>')
-    .replace(/\b(Strong Sell|Sell|Underweight|Bearish)\b/g,'<span class="neg"><strong>$1</strong></span>');
+    .replace(/\b(bullish)\b/gi,'<span class="pos"><strong>$1</strong></span>')
+    .replace(/\b(bearish)\b/gi,'<span class="neg"><strong>$1</strong></span>')
+    .replace(POS,'<span class="pos"><strong>$1</strong></span>')
+    .replace(NEG,'<span class="neg"><strong>$1</strong></span>')
+    .replace(NEU,'<span class="warnw"><strong>$1</strong></span>');
+}
+
+// A paragraph like "**Strategic Actions**: 1) do x 2) do y" is a list wearing a
+// paragraph's clothes. Split it so each action gets its own line.
+//
+// Only "N)" (paren) enumerators are treated as list markers. "N." is too common in
+// ordinary prose — an earlier version split "assumes scenario 1 or 2. The Conservative
+// Analyst..." into bogus items, because the "2." there is a number in a sentence, not a
+// marker. Paren style is unambiguous and is what these reports actually use.
+function splitEnum(t){
+  if(!/\s2\)\s/.test(t)) return null;
+  const m=t.match(/^(.*?)(?=\b1\)\s)/);
+  let lead=m?m[1]:'';
+  const rest=t.slice(lead.length);
+  lead=lead.replace(/[\s:—–-]+$/,'').trim();          // drop the trailing separator
+  const parts=rest.split(/\s+(?=\d+\)\s)/)
+    .map(x=>x.replace(/^\d+\)\s*/,'').trim())
+    .filter(x=>x && /[A-Za-z]/.test(x));               // no empty or punctuation-only items
+  if(parts.length<2) return null;
+  return {lead: lead.length && lead.length<200 ? lead : null, items: parts};
 }
 
 // pull the headline fields out of the decision text for an at-a-glance summary

@@ -184,8 +184,22 @@ A report opens with, in order:
 4. **Sections** grouped by stage, decision expanded, the rest collapsed.
 
 Markdown tables render as real tables (a single report can carry 30+ of them), and
-judgement words are tinted: Buy/Bullish green, Sell/Bearish red, and Confidence/Score
-values as coloured pills.
+judgement words are tinted so a long section can be skimmed:
+
+| Green | Amber | Red |
+|---|---|---|
+| Buy, Strong Buy, Overweight, Outperform, Accumulate, bullish | Hold, Neutral, Maintain, Market Perform | Sell, Underweight, Underperform, Trim, Reduce, Avoid, Exit, bearish |
+
+Confidence and Score render as coloured pills (high green, medium amber, low red).
+
+Matching is case-sensitive for verdict words, because the reports capitalise them as
+verdicts ("shift toward Overweight") but use the same words lowercase in ordinary prose
+("investors hold", "add capacity"), where colour would be noise. Bullish and bearish are
+matched either way — they are always a judgement.
+
+Paragraphs that hide a list — "**Strategic Actions**: 1) … 2) … 3) …" — are broken out
+into numbered lists. Only "N)" markers count; "N." appears too often mid-sentence
+("scenario 1 or 2. The Conservative Analyst…") to be safe to split on.
 
 Every section collapses; click the heading (with the ▸ chevron) to open or close it.
 
