@@ -36,14 +36,23 @@ tbody tr:hover{background:var(--chip)}
   font-style:italic;font-weight:600;cursor:help;vertical-align:middle;margin-left:4px;
   text-transform:none;letter-spacing:0}
 .ih:hover{border-color:var(--acc);color:var(--acc)}
-.cname{font-size:11px;color:var(--mut);font-weight:400;margin-top:1px;max-width:200px;
+.cname{font-size:11px;color:var(--mut);font-weight:400;margin-top:1px;max-width:240px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Bound the name itself rather than every first column in the app — report tables and
+   the fundamentals grid share that selector and must not be squeezed. */
+.fname{display:block;font-weight:600;line-height:1.3;cursor:help;max-width:260px}
 .chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
   font-size:10px;cursor:help}
 .wrap{overflow-x:auto}
 .bar{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;min-width:60px}
 .bar i{display:block;height:100%;background:var(--acc)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+/* Allocation carries fund names that run to 40+ characters, so it gets the wider column
+   and both children get min-width:0 — without it a grid item refuses to shrink below its
+   content and the table scrolls sideways instead of the name ellipsing. */
+.grid.wide{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr)}
+.grid.wide>*{min-width:0}
+@media (max-width:900px){.grid.wide{grid-template-columns:1fr}}
 .chip{display:inline-block;background:var(--chip);border-radius:99px;padding:1px 9px;
 font-size:11px;color:var(--mut);margin-right:4px}
 pre{background:var(--chip);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;
@@ -269,7 +278,7 @@ function overview(){
     export. Realized gain/loss is overstated by the value of those missing purchases
     until the gap is filled, because profit is derived as sold − (invested − still held).
     </div>`:''}
-  <div class="grid">
+  <div class="grid wide">
    <div class="card"><h2>Allocation</h2>
     <div class="row">
      <input id="aq" placeholder="Search ticker or sector" value="${allocQ}" style="flex:1;min-width:150px">
@@ -302,6 +311,16 @@ function allocRows(open){
       if(A==null)return 1; if(B==null)return -1;
       return (typeof A==='string'?A.localeCompare(B):(A>B?1:A<B?-1:0))*allocDir;});
 }
+// A stock's ticker is how you think of it; a fund's is an ISIN or, on Paytm, a folio and
+// a hash — meaningless to read and long enough to force the table sideways. So funds lead
+// with their name and carry the key only as a tooltip.
+function label(p){
+  const synthetic = p.asset==='mf' || /^(PM\d|INF[0-9A-Z]{9})/.test(p.ticker);
+  if(synthetic && p.name)
+    return `<b class="fname" title="${p.ticker}">${p.name}</b>`;
+  return `<b>${p.ticker}</b>${p.name?`<div class="cname">${p.name}</div>`:''}`;
+}
+
 function allocTable(open){
   const rows=allocRows(open);
   if(!rows.length) return `<p class="mut">Nothing matches that filter.</p>`;
@@ -312,7 +331,7 @@ function allocTable(open){
   return `<div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
       `<th data-ak="${k}">${l}${allocKey===k?(allocDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}<th></th></tr></thead>
     <tbody>${rows.map(p=>`<tr>
-     <td><b>${p.ticker}</b>${p.name?`<div class="cname">${p.name}</div>`:''}</td>
+     <td>${label(p)}</td>
      <td class="mut">${p.sector_label}</td>
      <td>${usd(p.market_value)}</td><td>${pct(p.weight,1)}</td>
      <td class="${sign(p.xirr)}">${pct(p.xirr,1)}</td>
@@ -429,8 +448,7 @@ function holdings(){
    <div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
     `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
-     <td><b>${x.ticker}</b>${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}
-         ${x.name?`<div class="cname">${x.name}</div>`:''}</td>
+     <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
      <td class="mut">${x.sector_label}</td>
      <td class="${sign(x.xirr)}">${pct(x.xirr,1)}</td>
      <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
