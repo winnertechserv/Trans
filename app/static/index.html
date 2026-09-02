@@ -369,18 +369,14 @@ async function research(){
    ${a.ready?`
      <div class="row"><span class="lbl">Ticker</span>
       <select id="rsel">${held.map(t=>`<option ${t===tick?'selected':''}>${t}</option>`).join('')}</select>
-      ${a.paid?`<span class="lbl">Model</span>
+      ${a.paid?`<span class="lbl">Reasoning model</span>
         <select id="rmodel">${(est.models||[]).map(m=>
           `<option value="${m.id}" ${m.id===(STATE.researchModel||a.deep_think_llm)?'selected':''}
            >${m.label}</option>`).join('')}</select>`:''}
       <button class="act" id="runr" ${running.length?'disabled':''}>
         ${running.length?'Running…':'Run analysis'}</button>
      </div>
-     <p class="mut" id="estline">${a.paid
-       ?`Estimated <b>${usd(est.low,2)}–${usd(est.high,2)}</b> per run across ~${est.calls}
-         model calls. An estimate, not a quote — actual usage is logged after the run.
-         ${est.verified?'':'<span class="neg">Rates in pricing.json are unverified.</span>'}`
-       :'Free — local model. Expect several minutes.'}</p>
+     <p class="mut" id="estline">${a.paid?estLine(est):'Free — local model. Expect several minutes.'}</p>
      ${running.length?renderProgress(running[0]):''}`
     :`<div class="banner">${(a.reason||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])).replace(/\n/g,'<br>')}
       <br><br>Setup: <b>SETUP-ANALYSIS.md</b></div>`}
@@ -401,9 +397,7 @@ async function research(){
     if(ms) ms.onchange=async e=>{
       STATE.researchModel=e.target.value;
       const n=await post('/api/analysis/estimate',{ticker:$('#rsel').value,model:e.target.value});
-      $('#estline').innerHTML=`Estimated <b>${usd(n.low,2)}–${usd(n.high,2)}</b> per run across
-        ~${n.calls} model calls. An estimate, not a quote — actual usage is logged after the run.
-        ${n.verified?'':'<span class="neg">Rates in pricing.json are unverified.</span>'}`;
+      $('#estline').innerHTML=estLine(n);
     };
   }
   if(STATE.openReport) showReport(STATE.openReport);
@@ -431,6 +425,14 @@ async function research(){
       research();
     }
   };
+}
+
+function estLine(e){
+  return `Estimated <b>${usd(e.low,2)}–${usd(e.high,2)}</b> per run — about ${e.calls}
+   model calls, of which only ${e.deep_calls} use the reasoning model; the rest run on
+   <b>${e.quick_think_llm.replace(/-\d{8}$/,'')}</b> to keep cost down.
+   An estimate calibrated on one observed run, not a quote — actual usage is logged
+   afterwards. ${e.verified?'':'<span class="neg">Rates in pricing.json are unverified.</span>'}`;
 }
 
 function renderProgress(j){

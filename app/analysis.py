@@ -75,12 +75,20 @@ def results_root():
 
 
 # ---------------------------------------------------------------- cost estimate
-# ~9 agents each seeing a few thousand tokens of context, multiplied by debate rounds.
-# Deliberately reported as a wide range: multi-agent debate length is genuinely variable
-# and quoting a precise number here would be false precision.
-_AGENTS = 9
-_CTX_LOW, _CTX_HIGH = 3000, 9000
-_OUT_LOW, _OUT_HIGH = 700, 2000
+# Calibrated against a real MSFT run (2026-09-02) read from the Anthropic console.
+# Two corrections to the original guesswork, which pulled in opposite directions:
+#   1. TradingAgents does NOT run every call on the deep model. That run showed 2 calls
+#      on the deep model and 15 on the quick one. Pricing everything at deep rates
+#      overstated cost badly.
+#   2. Per-call context is much larger than assumed — ~12.7k input and ~2.8k output on
+#      average, against an original guess of 3-9k in / 0.7-2k out.
+# Those errors partly cancelled, which is why the old range happened to bracket the
+# actual. The console list was truncated, so the observed $0.56 is a floor, not a total;
+# the high end below is deliberately generous rather than fitted to a censored sample.
+_DEEP_CALLS_LO, _DEEP_CALLS_HI = 2, 4
+_QUICK_CALLS_LO, _QUICK_CALLS_HI = 15, 30
+_IN_LO, _IN_HI = 8000, 18000
+_OUT_LO, _OUT_HI = 1200, 4000
 
 def estimate(ticker=None, model=None):
     cfg = C.tradingagents()
@@ -91,21 +99,30 @@ def estimate(ticker=None, model=None):
     if b == "ollama":
         return {"paid": False, "backend": b, "low": 0.0, "high": 0.0,
                 "deep_think_llm": deep, "quick_think_llm": quick, "verified": True,
+                "models": cfg.get("anthropic", {}).get("models", []),
                 "note": "Local model — no API charge."}
-    rounds = max(1, int(cfg.get("max_debate_rounds", 1))) + \
-             max(1, int(cfg.get("max_risk_rounds", 1)))
-    calls = _AGENTS * rounds
-    lo = CO.estimate(deep, _CTX_LOW * calls, _OUT_LOW * calls)
-    hi = CO.estimate(deep, _CTX_HIGH * calls, _OUT_HIGH * calls)
+    rounds = max(1, int(cfg.get("max_debate_rounds", 1)))
+    dl, dh = _DEEP_CALLS_LO, _DEEP_CALLS_HI * rounds
+    ql, qh = _QUICK_CALLS_LO, _QUICK_CALLS_HI * rounds
+
+    def side(m, calls, tin, tout):
+        e = CO.estimate(m, calls * tin, calls * tout)
+        return e.get("cost_usd") or 0.0
+
+    low = side(deep, dl, _IN_LO, _OUT_LO) + side(quick, ql, _IN_LO, _OUT_LO)
+    high = side(deep, dh, _IN_HI, _OUT_HI) + side(quick, qh, _IN_HI, _OUT_HI)
     p = CO.pricing()
     return {"paid": True, "backend": b, "ticker": ticker,
             "models": cfg.get("anthropic", {}).get("models", []),
-            "low": lo.get("cost_usd"), "high": hi.get("cost_usd"),
+            "low": round(low, 4), "high": round(high, 4),
             "deep_think_llm": deep, "quick_think_llm": quick,
-            "calls": calls, "verified": p.get("verified", False),
+            "calls": f"{dl + ql}–{dh + qh}",
+            "deep_calls": f"{dl}–{dh}", "quick_calls": f"{ql}–{qh}",
+            "verified": p.get("verified", False),
             "max_cost_usd": cfg["anthropic"].get("max_cost_usd"),
-            "note": ("Estimate only — a multi-agent debate's token use varies widely. "
-                     "Actual cost is logged after the run.")}
+            "note": ("Estimate only, calibrated on one observed run. Most calls use the "
+                     "quick model; only the heavy reasoning steps use the model you pick. "
+                     "Actual usage is logged after the run.")}
 
 
 # ---------------------------------------------------------------- running

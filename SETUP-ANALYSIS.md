@@ -68,15 +68,24 @@ The **Model** dropdown in the Research tab picks the model per run without touch
 config. The default is **Haiku 4.5** — cheapest, and the sensible choice while you are
 still finding out whether the output is useful to you.
 
-| Model | Estimated per run (1 debate round) |
-|---|---|
-| Haiku 4.5 *(default)* | $0.12–$0.34 |
-| Sonnet 5 | $0.35–$1.03 |
-| Opus 5 | $1.75–$5.13 |
+The dropdown sets the **reasoning model** only. TradingAgents runs most of its calls on
+the cheaper `quick_think_llm`, which stays on Haiku — one observed run used the deep
+model for 2 calls out of 17.
 
-Opus exceeds the default `max_cost_usd: 2.00` ceiling and will be refused until you
-raise it. Only models with a rate in `pricing.json` are offered — nothing is shown with
-a guessed price.
+| Reasoning model | Estimated per run (1 debate round) |
+|---|---|
+| Haiku 4.5 *(default)* | $0.24–$1.29 |
+| Sonnet 5 | $0.29–$1.60 |
+| Opus 5 | $0.63–$3.42 |
+
+These are calibrated against a real run rather than guessed: an MSFT analysis with Sonnet
+reasoning and Haiku elsewhere showed **$0.56 across 17 visible calls** (215,940 input and
+47,046 output tokens), and that console listing was truncated, so the true figure was
+higher. Expect the middle of the range rather than the bottom.
+
+Opus's high end exceeds the default `max_cost_usd: 2.00` ceiling and may be refused;
+raise the cap if you want it. Only models with a rate in `pricing.json` are offered —
+nothing is shown with a guessed price.
 
 **The key is never stored in `config.json`.** It is read from the environment and passed
 to the subprocess. `config.json` is gitignored, but keys in config files get copied into
