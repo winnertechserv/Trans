@@ -1,0 +1,18 @@
+# ---- personal data: never commit ----
+portfolio.db
+portfolio.db-wal
+portfolio.db-shm
+portfolio.db.pre-restore
+config.json
+sync/inbox/*.json
+sync/archive/*.json
+sync/prompts/*.txt
+transactions.csv
+positions.csv
+report.json
+
+# ---- machine state ----
+__pycache__/
+*.pyc
+.DS_Store
+*.log

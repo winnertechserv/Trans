@@ -1,0 +1,18 @@
+{
+  "verified": false,
+  "_comment": "USD per 1,000,000 tokens. Confirm at anthropic.com/pricing, then set verified=true.",
+  "models": {
+    "claude-haiku-4-5-20251001": {
+      "input": 1.0,
+      "output": 5.0
+    },
+    "claude-sonnet-5": {
+      "input": 3.0,
+      "output": 15.0
+    },
+    "claude-opus-5": {
+      "input": 15.0,
+      "output": 75.0
+    }
+  }
+}

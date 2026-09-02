@@ -1,0 +1,78 @@
+# Trans — working notes for Claude Code
+
+**Trans** — transparency for your portfolio: a local dashboard over brokerage data. `./run.sh` → http://127.0.0.1:8787
+
+Config lives in **`config.json`**, which is gitignored: account number, Drive folder,
+and `ticker_sectors` (the holdings list). Read it via `app/config.py`. Never hardcode an
+account number or a real holdings list in the repo — this code is shared.
+
+## Trigger words
+
+**"accounts"** — call `get_accounts` and show the account numbers (mask all but the
+last 4 when displaying). Offer to write the default one into `config.json` under
+`broker.account_number` and `broker.crypto_account_number`. This is usually the first
+thing a new user needs.
+
+**"classify tickers"** — run `python3 app/classify_cli.py` to list unmapped holdings and
+the valid sector keys, decide the right sector for each (P/B leads for banks, P/FFO for
+REITs, distribution yield for MLPs, P/NAV for BDCs, and so on), and write them into
+`config.json` under `ticker_sectors`. Never put a real holdings list in a committed file.
+
+**"sync" / "update the data"** — follow `sync/prompts/daily.txt` verbatim. It is
+regenerated on every Sync-tab load and already carries the correct delta cursor
+(`created_at_gte`). It ends by running `python3 app/ingest.py inbox`. Report rows added
+per kind and the new data-through date. Do not ask for confirmation first.
+
+**"sync fundamentals" / "refresh metrics"** — same, with `sync/prompts/fundamentals.txt`.
+
+**"bootstrap"** — a full-history build for an empty database. Follow
+`sync/prompts/bootstrap.txt`. Paginate to exhaustion; the cursor is base64 of
+`p=<ISO timestamp>` so you may forge cursors at date boundaries and fetch in parallel,
+but you MUST merge the page ranges afterwards and verify coverage is contiguous before
+reporting success. Gaps are silent data loss.
+
+**"backup"** — `python3 app/backup.py snapshot manual` (or POST /api/backup). Only the
+database file is copied; code lives in git, not Drive. Snapshots go to
+`<drive root>/trans`, auto-detected on macOS and Linux. Report the filename and
+transaction count, and say it is *queued* to Drive, not uploaded — Drive syncs
+asynchronously and the app cannot see whether the upload finished.
+`python3 app/backup.py auto` applies the staleness rule instead (backs up only if the
+newest snapshot is older than `backup.max_age_days`, default 7).
+
+**"restore"** — `python3 app/restore_cli.py`, or POST /api/restore from the web app.
+Always list options and confirm before overwriting; never auto-pick a snapshot.
+After restoring, the sync cursor rewinds automatically to the restored data's last
+transaction date and the prompts are regenerated — so the natural follow-up is to tell
+the user to say `sync`, which will fetch exactly the gap.
+
+`sync/prompts/*.txt` are generated and gitignored, so a fresh clone has none. `./run.sh`
+regenerates them on every start; if you need them sooner, run `python3 app/sync.py`.
+
+## Rules
+
+- Ingest is idempotent (deduped on broker `order_id`) — overlapping fetches are safe.
+  Never dedupe by hand; re-running is always the correct fix.
+- Never call the Anthropic API for a sync, a backup, or a restore. All of it is free at
+  point of use. Log runs to `token_ledger` with `source='claude_code'`.
+- Before any commit, run `python3 scripts/check_clean.py`. It refuses if personal data
+  (database, raw broker JSON, exported CSVs, account numbers) would be committed.
+- If the broker MCP tools are not in the tool list, the session predates the OAuth
+  handshake. Tell the user to restart Claude Code. Do not curl the endpoint — it returns
+  `authentication required` for any unauthenticated call and proves nothing.
+
+## Data notes that are easy to get wrong
+
+- **Dividends are reconstructed from DRIP orders** (`placed_agent='drip'`), recorded as a
+  dividend inflow *plus* the reinvestment buy. There is no dividend endpoint on the MCP.
+  This captures reinvested dividends only; cash dividends taken as cash are invisible.
+- **Stock splits and ADR ratio changes**: order history holds pre-split quantities, so
+  derived share counts will not match the broker's current position for any ticker that
+  split. This does **not** affect XIRR — it is cash-flow driven and terminal value uses
+  the broker's current share count. Do not "correct" historical quantities; reconcile
+  and explain the difference instead.
+- **Period alignment**: when deriving a margin, the numerator and denominator must cover
+  the same period. Filing-year operating income over TTM revenue is wrong. Pull revenue
+  from the same filing.
+- Only rows with empty `axises` in SEC facts are consolidated totals; the rest are
+  segment breakdowns.
+- `pricing.json` starts unverified — do not present its dollar figures as authoritative.

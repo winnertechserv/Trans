@@ -1,0 +1,368 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portfolio</title>
+<style>
+:root{--bg:#fbfaf9;--panel:#fff;--ink:#1a1a18;--mut:#6b6862;--line:#e6e3de;--acc:#2f6f4f;
+--pos:#1a7f4b;--neg:#b3352b;--warn:#8a5a00;--chip:#f2efea}
+@media(prefers-color-scheme:dark){:root{--bg:#161614;--panel:#1e1d1a;--ink:#eceae6;--mut:#9a958c;
+--line:#2f2d29;--acc:#6fc296;--pos:#5bbd88;--neg:#e2796d;--warn:#d9a441;--chip:#26241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;gap:20px;
+align-items:baseline;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:16px;margin:0;letter-spacing:-.01em}
+.kpis{display:flex;gap:22px;flex-wrap:wrap;margin-left:auto}
+.kpi b{display:block;font-size:19px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi span{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+nav{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{background:none;border:0;padding:11px 14px;color:var(--mut);cursor:pointer;
+font:inherit;border-bottom:2px solid transparent;white-space:nowrap}
+nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--acc);font-weight:600}
+main{padding:20px 22px 60px;max-width:1280px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+.card h2{font-size:13px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
+tbody tr:hover{background:var(--chip)}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.mut{color:var(--mut)}
+.wrap{overflow-x:auto}
+.bar{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;min-width:60px}
+.bar i{display:block;height:100%;background:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.chip{display:inline-block;background:var(--chip);border-radius:99px;padding:1px 9px;
+font-size:11px;color:var(--mut);margin-right:4px}
+pre{background:var(--chip);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;
+white-space:pre-wrap;line-height:1.45;max-height:340px;overflow-y:auto}
+button.act{background:var(--acc);color:#fff;border:0;border-radius:7px;padding:8px 14px;
+cursor:pointer;font:inherit;font-weight:600}
+button.act.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;border:0;border-right:1px solid var(--line);padding:7px 15px;
+font:inherit;color:var(--mut);cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--acc);color:#fff;font-weight:600}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 10px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.prhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:0}
+.prhead b{font-size:13px}
+.banner{border-left:3px solid var(--warn);background:var(--chip);padding:10px 14px;
+border-radius:0 8px 8px 0;margin-bottom:14px;font-size:13px}
+select,input{font:inherit;padding:6px 9px;border:1px solid var(--line);border-radius:7px;
+background:var(--panel);color:var(--ink)}
+.day{border-bottom:1px solid var(--line);padding:9px 0}
+.day .h{display:flex;justify-content:space-between;font-weight:600;margin-bottom:5px}
+.tick{display:inline-block;background:var(--chip);border-radius:6px;padding:2px 8px;margin:2px 3px 0 0;font-size:12px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);
+max-width:460px;padding:20px}dialog::backdrop{background:#0008}
+.miss{color:var(--mut);font-style:italic}
+</style></head><body>
+<header><h1>Portfolio</h1><div class="kpis" id="kpis"></div></header>
+<nav id="nav"></nav><main id="main">loading…</main>
+<dialog id="consent"></dialog>
+<script>
+const $=s=>document.querySelector(s);
+const fmt=(n,d=0)=>n==null?'—':n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd=(n,d=0)=>n==null?'—':'$'+fmt(n,d);
+const pct=(n,d=2)=>n==null?'—':(n*100).toFixed(d)+'%';
+const sign=n=>n==null?'mut':n>=0?'pos':'neg';
+const get=u=>fetch(u).then(r=>r.json());
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(b||{})}).then(r=>r.json());
+let STATE={};
+
+const TABS=[['overview','Overview'],['holdings','Holdings'],['buys','Daily buys'],
+ ['div','Dividends'],['analysis','Analysis'],['fund','Fundamentals'],['sync','Sync & cost']];
+let tab='overview';
+$('#nav').innerHTML=TABS.map(([k,l])=>`<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
+$('#nav').onclick=e=>{const t=e.target.dataset.t; if(!t)return; tab=t;
+  [...$('#nav').children].forEach(b=>b.setAttribute('aria-selected',b.dataset.t===t)); render();};
+
+async function boot(){
+  STATE.ov=await get('/api/overview');
+  const o=STATE.ov.overall,h=STATE.ov.health;
+  $('#kpis').innerHTML=[
+    ['Value',usd(o.market_value)],['XIRR',pct(o.xirr)],
+    ['Net P/L',usd(o.net_profit)],['Invested',usd(o.invested)],
+    ['Dividends',usd(o.dividends,2)],
+    ['Data through',h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')]
+  ].map(([s,v])=>`<div class="kpi"><span>${s}</span><b>${v}</b></div>`).join('');
+  render();
+}
+function render(){({overview,holdings,buys,div:divs,analysis,fund,sync:syncv}[tab])();}
+
+function overview(){
+  const {overall:o,results:r,health:h}=STATE.ov;
+  const open=r.filter(x=>x.market_value>0).sort((a,b)=>b.market_value-a.market_value);
+  if(!open.length){ $('#main').innerHTML=`<div class="card"><h2>No data yet</h2>
+    <p class="mut">This database is empty. Open Claude Code in this folder and say
+    <b>bootstrap</b> to pull your full history, or restore a backup with
+    <code>./run.sh --restore</code>.</p></div>`; return; }
+  const mx=open[0].market_value;
+  $('#main').innerHTML=`
+  ${h.days_stale>2?`<div class="banner">Data is ${h.days_stale} days old. Run a sync from the
+    <b>Sync &amp; cost</b> tab.</div>`:''}
+  <div class="grid">
+   <div class="card"><h2>Allocation</h2><div class="wrap"><table>
+    <tbody>${open.map(p=>`<tr><td>${p.ticker}<span class="chip">${p.sector_label}</span></td>
+     <td style="width:34%"><div class="bar"><i style="width:${p.market_value/mx*100}%"></i></div></td>
+     <td>${pct(p.weight,1)}</td><td>${usd(p.market_value)}</td>
+     <td class="${sign(p.xirr)}">${pct(p.xirr,1)}</td></tr>`).join('')}</tbody></table></div></div>
+   <div class="card"><h2>Snapshot</h2><table><tbody>
+     <tr><td>Positions</td><td>${open.length}</td></tr>
+     <tr><td>Transactions</td><td>${fmt(h.n_transactions)}</td></tr>
+     <tr><td>Simple return</td><td class="${sign(o.simple_return)}">${pct(o.simple_return)}</td></tr>
+     <tr><td>First activity</td><td>${o.first}</td></tr>
+     <tr><td>Fundamentals loaded</td><td>${h.n_fundamentals} tickers</td></tr>
+   </tbody></table>
+   <h2 style="margin-top:18px">Top movers by XIRR</h2><table><tbody>
+     ${r.filter(x=>x.xirr!=null).sort((a,b)=>b.xirr-a.xirr).slice(0,5)
+       .map(x=>`<tr><td>${x.ticker}</td><td class="pos">${pct(x.xirr,1)}</td></tr>`).join('')}
+     ${r.filter(x=>x.xirr!=null).sort((a,b)=>a.xirr-b.xirr).slice(0,5).reverse()
+       .map(x=>`<tr><td>${x.ticker}</td><td class="neg">${pct(x.xirr,1)}</td></tr>`).join('')}
+   </tbody></table></div></div>`;
+}
+
+let sortKey='market_value',sortDir=-1;
+function holdings(){
+  const r=[...STATE.ov.results].sort((a,b)=>{
+    const A=a[sortKey],B=b[sortKey];
+    if(A==null)return 1; if(B==null)return -1;
+    return (A>B?1:A<B?-1:0)*sortDir;});
+  const cols=[['ticker','Ticker'],['sector_label','Sector'],['xirr','XIRR'],['weight','Weight'],
+    ['invested','Invested'],['market_value','Value'],['dividends','Divs'],
+    ['net_profit','Net P/L'],['simple_return','Simple'],['holding_days','Days'],['n_flows','Flows']];
+  $('#main').innerHTML=`<div class="card"><h2>All holdings — click a header to sort</h2>
+   <div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
+    `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}</th>`).join('')}</tr></thead>
+   <tbody>${r.map(x=>`<tr>
+     <td><b>${x.ticker}</b>${x.open?'':' <span class="chip">closed</span>'}</td>
+     <td class="mut">${x.sector_label}</td>
+     <td class="${sign(x.xirr)}">${pct(x.xirr,1)}</td><td>${pct(x.weight,1)}</td>
+     <td>${usd(x.invested)}</td><td>${usd(x.market_value)}</td><td>${usd(x.dividends,2)}</td>
+     <td class="${sign(x.net_profit)}">${usd(x.net_profit)}</td>
+     <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
+     <td class="mut">${x.holding_days??'—'}</td><td class="mut">${x.n_flows}</td></tr>`).join('')}
+   </tbody></table></div></div>`;
+  $('#main').querySelector('thead').onclick=e=>{const k=e.target.dataset.k; if(!k)return;
+    if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=-1;} holdings();};
+}
+
+async function buys(){
+  $('#main').innerHTML='<div class="card">loading…</div>';
+  const days=STATE.buyDays||30;
+  const [d,p]=await Promise.all([get('/api/daily-buys?days='+days),get('/api/buy-program?days='+days)]);
+  $('#main').innerHTML=`
+  <div class="card"><h2>Recurring programme — last ${p.days} trading days</h2>
+   <p class="mut">${usd(p.total)} deployed · <b>${usd(p.per_day)}/day</b> across ${p.tickers.length} tickers</p>
+   <div class="wrap"><table><thead><tr><th>Ticker</th><th>Sector</th><th>Total</th>
+    <th>Buys</th><th>Per buy</th><th>Share of new $</th></tr></thead><tbody>
+    ${p.tickers.map(t=>`<tr><td><b>${t.ticker}</b></td><td class="mut">${t.sector_label}</td>
+     <td>${usd(t.amount)}</td><td>${t.n}</td><td>${usd(t.per_buy,2)}</td>
+     <td><div class="bar" style="display:inline-block;width:70px;vertical-align:middle">
+      <i style="width:${t.share*100*4}%"></i></div> ${pct(t.share,1)}</td></tr>`).join('')}
+   </tbody></table></div></div>
+  <div class="card"><h2>Day by day
+    <select id="dsel" style="float:right">${[7,14,30,60,90].map(n=>
+      `<option ${n===days?'selected':''}>${n}</option>`).join('')}</select></h2>
+   ${d.map(x=>`<div class="day"><div class="h"><span>${x.date}</span>
+     <span>${usd(x.total,2)} · ${x.n} orders</span></div>
+     <div>${x.items.map(i=>`<span class="tick"><b>${i.ticker}</b> ${usd(i.amount,2)}</span>`).join('')}</div>
+   </div>`).join('')||'<p class="mut">No buys in range.</p>'}</div>`;
+  $('#dsel').onchange=e=>{STATE.buyDays=+e.target.value;buys();};
+}
+
+async function divs(){
+  const d=await get('/api/dividends');
+  const mx=Math.max(...d.by_year.map(y=>y.amount));
+  $('#main').innerHTML=`
+   <div class="card"><h2>Dividends — ${usd(d.total,2)} lifetime</h2>
+    <table><tbody>${d.by_year.map(y=>`<tr><td>${y.year}</td>
+      <td style="width:55%"><div class="bar"><i style="width:${y.amount/mx*100}%"></i></div></td>
+      <td>${usd(y.amount,2)}</td><td class="mut">${y.n} payments</td></tr>`).join('')}</tbody></table></div>
+   <div class="card"><h2>By ticker</h2><div class="wrap"><table>
+    <thead><tr><th>Ticker</th><th>Received</th><th>Payments</th><th>Share</th></tr></thead><tbody>
+    ${d.by_ticker.map(t=>`<tr><td><b>${t.ticker}</b></td><td>${usd(t.amount,2)}</td>
+     <td class="mut">${t.n}</td><td>${pct(t.amount/d.total,1)}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+
+async function analysis(){
+  const [a,cn]=await Promise.all([get('/api/allocation'),get('/api/contributions')]);
+  const ms=Math.max(...a.by_sector.map(s=>s.value));
+  const cs=cn.series.slice(-24),cm=Math.max(...cs.map(x=>x.amount));
+  $('#main').innerHTML=`
+   <div class="grid">
+    <div class="card"><h2>Sector exposure</h2><table><tbody>
+     ${a.by_sector.map(s=>`<tr><td>${s.sector}</td>
+      <td style="width:45%"><div class="bar"><i style="width:${s.value/ms*100}%"></i></div></td>
+      <td>${pct(s.weight,1)}</td><td class="mut">${usd(s.value)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="card"><h2>Concentration</h2><table><tbody>
+     ${Object.entries(a.concentration).map(([k,v])=>`<tr><td>${k.replace('top','Top ')}</td>
+      <td style="width:45%"><div class="bar"><i style="width:${v*100}%"></i></div></td>
+      <td>${pct(v,1)}</td></tr>`).join('')}</tbody></table>
+     <p class="mut" style="margin-top:14px"><b>${a.tail.count} positions under 1%</b> —
+      ${usd(a.tail.value)} combined (${pct(a.tail.weight,1)} of portfolio).<br>
+      ${a.tail.tickers.map(t=>`<span class="tick">${t}</span>`).join('')}</p></div>
+   </div>
+   <div class="card"><h2>New capital deployed per month (last 24)</h2>
+    <table><tbody>${cs.map(x=>`<tr><td>${x.month}</td>
+     <td style="width:60%"><div class="bar"><i style="width:${x.amount/cm*100}%"></i></div></td>
+     <td>${usd(x.amount)}</td></tr>`).join('')}</tbody></table>
+    <p class="mut">Trailing 12 months: <b>${usd(cn.trailing_12m)}</b></p></div>`;
+}
+
+async function fund(){
+  const eligible=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto')
+    .sort((a,b)=>b.market_value-a.market_value);
+  if(!eligible.length){ $('#main').innerHTML=`<div class="card"><h2>No holdings yet</h2>
+    <p class="mut">Run a sync first, then <b>sync fundamentals</b> in Claude Code.</p></div>`; return; }
+  const tick=STATE.fundTicker||eligible[0].ticker;
+  const opts=eligible.map(r=>r.ticker).sort();
+  const f=await get('/api/fundamentals/'+tick);
+  const fmtv=(m)=>{if(m.value==null)return `<span class="miss">not loaded</span>`;
+    if(m.fmt==='%')return pct(m.value,1); if(m.fmt==='$')return usd(m.value);
+    if(m.fmt==='x')return fmt(m.value,2)+'×'; if(m.fmt==='d')return fmt(m.value,0)+' d';
+    return fmt(m.value,2);};
+  $('#main').innerHTML=`<div class="card">
+   <h2>Fundamentals <select id="tsel" style="float:right">${opts.map(t=>
+     `<option ${t===tick?'selected':''}>${t}</option>`).join('')}</select></h2>
+   <p class="mut"><b>${f.ticker}</b> — ${f.sector_label}. Metric set is chosen for this sector:
+    P/E is omitted where it misleads (REITs, MLPs), P/B leads for banks, and ETFs show only
+    fund-level figures. Coverage ${pct(f.coverage,0)}.</p>
+   <div class="wrap"><table><thead><tr><th>Metric</th><th>Value</th><th>As of</th>
+    <th>Direction</th></tr></thead><tbody>
+    ${f.metrics.map(m=>`<tr><td>${m.label}</td><td>${fmtv(m)}</td>
+     <td class="mut">${m.asof||'—'}</td>
+     <td class="mut">${m.higher_better?'higher better':'lower better'}</td></tr>`).join('')}
+   </tbody></table></div>
+   ${f.coverage<1?`<p class="mut" style="margin-top:12px">Missing metrics need a fundamentals
+     sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>`;
+  $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;fund();};
+}
+
+async function syncv(){
+  const k=STATE.pk||'daily';
+  const META={
+    daily:{title:'Daily delta sync',short:'daily',cadence:'run daily, after market close',
+      desc:'Fetches orders, positions and quotes newer than what the database already holds. '+
+           'Safe to run repeatedly — ingest dedupes on broker order id.'},
+    fundamentals:{title:'Fundamentals refresh',short:'fundamentals',cadence:'run weekly',
+      desc:'Refreshes company metrics for every holding, using the metric set that matters for '+
+           'each sector. Fills the “not loaded” rows on the Fundamentals tab.'}};
+  const meta=META[k];
+  const [pr,co,bk]=await Promise.all([get('/api/sync/prompt?kind='+k),get('/api/costs'),
+                                     get('/api/backups')]);
+  $('#main').innerHTML=`
+  ${STATE.ov.pricing_verified?'':`<div class="banner"><b>Pricing unverified.</b>
+    Dollar figures below use placeholder rates in <code>pricing.json</code>. Confirm them at
+    anthropic.com/pricing and set <code>"verified": true</code>.</div>`}
+  <div class="card"><h2>Sync</h2>
+   <p class="mut">The Robinhood MCP is reachable only from a Claude Code session, so the browser
+    cannot fetch broker data directly. Copy this prompt into Claude Code — it writes JSON into
+    <code>sync/inbox/</code> and ingests it. No data is copied by hand.</p>
+   <div class="row"><span class="lbl">Choose prompt</span>
+    <span class="seg">
+     <button data-k="daily" aria-pressed="${k==='daily'}">Daily delta</button>
+     <button data-k="fundamentals" aria-pressed="${k==='fundamentals'}">Fundamentals</button>
+    </span></div>
+   <div class="prhead"><b>${meta.title}</b><span class="mut">${meta.cadence}</span></div>
+   <p class="mut" style="margin:8px 0 10px">${meta.desc}</p>
+   <pre id="pr">${pr.prompt.replace(/[<>&]/g,ch=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]))}</pre>
+   <div class="row"><button class="act" id="copy">Copy ${meta.short} prompt</button>
+    <button class="act ghost" id="ing">Ingest inbox now</button>
+    <span class="mut" style="font-size:12px">…or just type <b>sync</b> in Claude Code</span></div>
+   <p class="mut">Have through — equity ${pr.cursor.equity_through},
+     crypto ${pr.cursor.crypto_through}</p></div>
+  <div class="card"><h2>Backup</h2>
+   ${bk.ready?`
+     <p class="mut">Only the database file is backed up — one <code>.db</code> per
+      snapshot, no code. ${bk.count} in
+      <code>${bk.dir.replace(/^.*(CloudStorage\/|Insync\/)/,'')}</code>${bk.newest?` · newest
+      <b>${bk.newest.created_at.replace('T',' ')}</b>`:''}</p>
+     <p class="mut">Policy: automatic when the newest snapshot is older than
+      <b>${bk.max_age_days} days</b> — checked when the app starts and while it is open.
+      ${bk.due?`<span class="neg">A backup is due now.</span>`
+       :`Currently ${bk.age_days!=null?bk.age_days.toFixed(1):'—'} days old.`}</p>
+     <p><button class="act" id="bk">Back up now</button>
+      <span class="mut" style="font-size:12px">snapshot written to the Drive folder;
+      Drive uploads it in the background</span></p>
+     ${bk.backups.length?`<div class="wrap"><table><thead><tr><th>File</th><th>When</th>
+      <th>Size</th><th>Transactions</th><th></th><th></th></tr></thead><tbody>
+      ${bk.backups.map((b,i)=>`<tr><td>${b.file}</td>
+        <td class="mut">${(b.created_at||'').replace('T',' ')}</td>
+        <td>${((b.bytes||0)/1048576).toFixed(1)} MB</td>
+        <td>${b.n_transactions!=null?fmt(b.n_transactions):'<span class="mut">—</span>'}</td>
+        <td>${i===0?'<span class="chip">newest</span>':''}</td>
+        <td><button class="act ghost" data-restore="${b.file}"
+          style="padding:3px 10px;font-size:12px">Restore</button></td></tr>`).join('')}
+      </tbody></table></div>`:''}
+     <p class="mut" style="margin-top:12px">Database currently holds data through
+      <b>${bk.resume.equity_through||'—'}</b>${bk.resume.days_behind>0?
+      ` — ${bk.resume.days_behind} day${bk.resume.days_behind===1?'':'s'} behind`:''}.
+      ${bk.resume.next_action}.</p>`
+    :`<div class="banner">Backups are not configured.<br>${(bk.error||'').replace(/[<>&]/g,
+        ch=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch])).replace(/\n/g,'<br>')}</div>`}
+  </div>
+  <div class="card"><h2>Token &amp; cost ledger — ${usd(co.total_cost,4)} billed to date</h2>
+   <table><tbody>${co.by_source.map(s=>`<tr><td>${s.source}</td>
+     <td>${fmt(s.tokens)} tokens</td><td>${usd(s.cost,4)}</td>
+     <td class="mut">${s.n} ops</td></tr>`).join('')||'<tr><td class="mut">no entries yet</td></tr>'}
+   </tbody></table>
+   <div class="wrap" style="margin-top:14px"><table><thead><tr><th>When</th><th>Operation</th>
+    <th>Source</th><th>Model</th><th>In</th><th>Out</th><th>Cost</th><th>Consent</th></tr></thead>
+    <tbody>${co.entries.map(e=>`<tr><td class="mut">${e.ts}</td><td>${e.operation}</td>
+     <td>${e.source}</td><td class="mut">${e.model||'—'}</td><td>${fmt(e.input_tokens)}</td>
+     <td>${fmt(e.output_tokens)}</td><td>${usd(e.cost_usd,4)}</td>
+     <td>${e.source==='claude_api'?(e.consented?'yes':'<span class="neg">no</span>'):'n/a'}</td>
+     </tr>`).join('')||'<tr><td class="mut">nothing logged yet</td></tr>'}</tbody></table></div></div>`;
+  $('#main').onclick=async e=>{
+    if(e.target.dataset.k){STATE.pk=e.target.dataset.k;syncv();}
+    if(e.target.id==='copy'){navigator.clipboard.writeText($('#pr').textContent);
+      e.target.textContent='Copied';setTimeout(()=>e.target.textContent='Copy prompt',1400);}
+    const rf=e.target.dataset&&e.target.dataset.restore;
+    if(rf){
+      if(!confirm(`Restore ${rf}?\n\nThis replaces the current database. A copy of it is `
+        +`kept as portfolio.db.pre-restore.`)) return;
+      e.target.disabled=true; e.target.textContent='Restoring…';
+      const r=await post('/api/restore',{file:rf});
+      if(r.ok){
+        alert(`Restored ${r.restored}\n${fmt(r.n_transactions)} transactions, `
+          +`data through ${r.last_transaction_date}\n\nNext: ${r.resume.next_action}`);
+        STATE.ov=await get('/api/overview');
+      } else alert('Restore failed: '+(r.error||'unknown'));
+      syncv(); return;
+    }
+    if(e.target.id==='bk'){e.target.disabled=true;e.target.textContent='Backing up…';
+      const r=await post('/api/backup',{kind:'manual'});
+      alert(r.ok?`Snapshot written: ${r.backup.file}\n${fmt(r.backup.n_transactions)} transactions`
+        +`\n\n${r.note}`:'Backup failed: '+(r.error||'unknown'));
+      syncv();}
+    if(e.target.id==='ing'){e.target.textContent='Ingesting…';
+      const r=await post('/api/sync/ingest');
+      alert(r.ok?`Ingested ${r.rows} rows\n${(r.files||[]).join('\n')||'inbox was empty'}`:'Error: '+r.error);
+      STATE.ov=await get('/api/overview'); syncv();}
+  };
+}
+boot();
+// pick up out-of-band ingests (Claude Code writing straight to the DB) without a manual reload
+setInterval(async()=>{
+  try{
+    const h=await get('/api/health');
+    if(h.n_transactions!==STATE.ov.health.n_transactions){
+      STATE.ov=await get('/api/overview');
+      const o=STATE.ov.overall,hh=STATE.ov.health;
+      $('#kpis').innerHTML=[['Value',usd(o.market_value)],['XIRR',pct(o.xirr)],
+        ['Net P/L',usd(o.net_profit)],['Invested',usd(o.invested)],
+        ['Dividends',usd(o.dividends,2)],
+        ['Data through',hh.last_transaction_date+(hh.days_stale>1?` (${hh.days_stale}d old)`:'')]
+      ].map(([s,v])=>`<div class="kpi"><span>${s}</span><b>${v}</b></div>`).join('');
+      render();
+    }
+  }catch(e){}
+},20000);
+</script></body></html>

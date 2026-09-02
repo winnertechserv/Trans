@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Daily snapshot into the Google Drive folder.
+     Install:
+       sed 's|REPO_PATH|'"$PWD"'|g' scripts/com.portfolio.backup.plist.example \
+         > ~/Library/LaunchAgents/com.portfolio.backup.plist
+       launchctl load ~/Library/LaunchAgents/com.portfolio.backup.plist
+     Run once now:   launchctl start com.portfolio.backup
+     Remove:         launchctl unload ~/Library/LaunchAgents/com.portfolio.backup.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.portfolio.backup</string>
+  <key>ProgramArguments</key>
+  <array><string>REPO_PATH/scripts/backup.sh</string></array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>45</integer></dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>REPO_PATH/backup.log</string>
+  <key>StandardErrorPath</key><string>REPO_PATH/backup.log</string>
+</dict>
+</plist>

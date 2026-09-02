@@ -1,0 +1,33 @@
+{
+  "_comment": "Copy to config.json (gitignored) and fill in. drive_backup_dir is optional \u2014 a Google Drive folder is auto-detected on macOS and Linux and snapshots go to <drive root>/trans.",
+  "broker": {
+    "account_number": "REPLACE_ME",
+    "crypto_account_number": "REPLACE_ME"
+  },
+  "drive_backup_dir": "/Users/you/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/trans",
+  "backup": {
+    "keep_daily": 30,
+    "keep_monthly": 12,
+    "max_age_days": 7
+  },
+  "port": 8787,
+  "ticker_sectors": {
+    "VOO": "broad_etf",
+    "VTI": "broad_etf",
+    "VXUS": "broad_etf",
+    "SPY": "broad_etf",
+    "QQQ": "thematic_etf",
+    "GLD": "commodity_etf",
+    "VNQ": "reit_etf",
+    "MSFT": "software",
+    "AAPL": "consumer_hw",
+    "AMZN": "consumer_disc",
+    "NVDA": "semiconductor",
+    "JPM": "bank",
+    "O": "reit_etf",
+    "EPD": "midstream_mlp",
+    "BTC": "crypto",
+    "ETH": "crypto"
+  },
+  "_ticker_sectors_note": "Map your holdings to a sector key. Valid keys are the keys of SECTOR_METRICS in app/sectors.py. Anything unmapped falls back to a generic metric set, so this is optional but improves the Fundamentals tab."
+}
