@@ -89,6 +89,13 @@ def company_names(c):
         "  WHERE f2.ticker=fundamentals.ticker AND f2.metric='name')")}
 
 
+# A mutual fund has no industry sector, and neither does a gold bond. Leaving them as
+# "Unclassified" buried them among 55 equities under an ISIN nobody recognises, which is
+# how two funds worth Rs1,66,898 became invisible in a table that was displaying them
+# perfectly well. The asset type IS the useful category for these.
+ASSET_LABEL = {"mf": "Mutual fund", "sgb": "Sovereign gold bond", "bond": "Bond"}
+
+
 def asset_types(c, market=None):
     """{ticker: asset}. Positions win; transactions fill in anything already closed.
 
@@ -182,6 +189,9 @@ def results(c, as_of=None, market=None):
         r["cost_basis"] = b
         r["short_units"] = short.get(r["ticker"])
         r.setdefault("asset", assets.get(r["ticker"], "equity"))
+        if r["asset"] in ASSET_LABEL:
+            r["sector"] = r["asset"]
+            r["sector_label"] = ASSET_LABEL[r["asset"]]
         r["unrealized"] = (r["market_value"] - b) if b is not None else None
     # Realised vs unrealised. Cost of the shares still held comes from cost_basis(); the
     # cost of everything already sold is then whatever is left of lifetime spend, so
