@@ -89,6 +89,23 @@ def company_names(c):
         "  WHERE f2.ticker=fundamentals.ticker AND f2.metric='name')")}
 
 
+def asset_types(c, market=None):
+    """{ticker: asset}. Positions win; transactions fill in anything already closed.
+
+    Rows built from transaction history carry no asset of their own, so without this a
+    mutual fund looks like an equity the moment it gains an order history — which is
+    exactly what happened when the MF tradebook landed, putting ISINs back into pickers
+    that assume a Yahoo symbol."""
+    br = M.broker_of(market) if market else None
+    out = {}
+    for q in ("SELECT DISTINCT ticker,asset FROM transactions",
+              "SELECT ticker,asset FROM positions"):
+        for r in c.execute(q + (" WHERE broker=?" if br else ""), (br,) if br else ()):
+            if r["asset"]:
+                out[r["ticker"]] = r["asset"]
+    return out
+
+
 def _no_history_note(asset, has_txns):
     if not has_txns:
         return "no transaction history — import a tradebook for XIRR"
@@ -156,6 +173,7 @@ def results(c, as_of=None, market=None):
     nm = company_names(c)
     basis, no_basis, _broken = cost_basis(c, market)
     short = _unreconciled(c, market)
+    assets = asset_types(c, market)
     tot = sum(r["market_value"] for r in rows) or 1
     for r in rows:
         r["weight"] = r["market_value"] / tot
@@ -163,6 +181,7 @@ def results(c, as_of=None, market=None):
         b = basis.get(r["ticker"])
         r["cost_basis"] = b
         r["short_units"] = short.get(r["ticker"])
+        r.setdefault("asset", assets.get(r["ticker"], "equity"))
         r["unrealized"] = (r["market_value"] - b) if b is not None else None
     # Realised vs unrealised. Cost of the shares still held comes from cost_basis(); the
     # cost of everything already sold is then whatever is left of lifetime spend, so
