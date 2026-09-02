@@ -388,6 +388,8 @@ def reports(ticker=None):
                 " AND created_at=(SELECT MAX(created_at) FROM ai_notes"
                 "                 WHERE ticker=? AND kind LIKE 'ta:%')",
                 (ticker.upper(), ticker.upper()))]
+            plain = next((r for r in rows if r["kind"] == "ta:plain"), None)
+            rows = [r for r in rows if r["kind"] != "ta:plain"]
             for r in rows:
                 k = r["kind"][3:]
                 r["label"], r["order"] = LABEL.get(k, (k, 99))
@@ -395,7 +397,8 @@ def reports(ticker=None):
             return {"ticker": ticker.upper(), "sections": rows,
                     "created_at": rows[0]["created_at"] if rows else None,
                     "source": rows[0]["source"] if rows else None,
-                    "context": position_context(ticker)}
+                    "context": position_context(ticker),
+                    "plain": plain["content"] if plain else None}
         out = []
         for r in c.execute(
             "SELECT ticker, MAX(created_at) created_at, COUNT(*) n, source FROM ai_notes"

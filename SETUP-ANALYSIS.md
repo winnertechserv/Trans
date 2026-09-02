@@ -187,8 +187,48 @@ Markdown tables render as real tables (a single report can carry 30+ of them), a
 judgement words are tinted: Buy/Bullish green, Sell/Bearish red, and Confidence/Score
 values as coloured pills.
 
+Every section collapses; click the heading (with the ▸ chevron) to open or close it.
+
 **Copy** on any section copies that section; **Copy whole report** copies everything as
 markdown. **Close** dismisses it.
+
+## Where report data lives
+
+Two places, both local:
+
+| What | Where |
+|---|---|
+| Rendered sections, what the app reads | `ai_notes` table in `portfolio.db` |
+| Original markdown from TradingAgents | `analysis/<TICKER>/<DATE>/` |
+| Token counts per agent from the run | `analysis/<TICKER>/<DATE>/usage.json` |
+| Live progress during a run | `analysis/<TICKER>/<DATE>/progress.json` |
+| Cost of every run | `token_ledger` table in `portfolio.db` |
+
+`ai_notes` rows are keyed `ta:<section>` (plus `ta:plain` for the rewrite) with the model
+that produced them. The `analysis/` directory is gitignored and **not** included in Drive
+backups — only `portfolio.db` is backed up, so the rendered report survives a restore
+while the raw markdown does not.
+
+## In plain English (optional, billed)
+
+The reports are dense financial writing — thousands of words of analyst prose. The
+**Explain simply** button rewrites one into short bullets, in language pitched at someone
+new to investing, and explicitly framed for buying a small amount every day:
+
+- The one-line version
+- What the company is doing well
+- What could go wrong
+- What the analysts disagreed about
+- What this means if you buy a little every day
+- What to watch next
+
+One call to Haiku, roughly **$0.02**, with the usual confirmation first and the actual
+cost logged afterwards. It reads only the decision, the two managers and the bull/bear
+cases — the reasoning, not every analyst table — which keeps it cheap and focused.
+
+The rewrite is stored alongside the report and shown above it. **Redo** regenerates it.
+
+It is still someone else's analysis being explained, not advice, and the prompt says so.
 
 ## Against your actual position
 

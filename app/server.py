@@ -6,7 +6,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.dirname(HERE))
 import db as D, analytics as A, sync as SY, costs as C, sectors as S, ingest as I
-import backup as B, config as CFG, analysis as AN
+import backup as B, config as CFG, analysis as AN, explain as EX
 
 STATIC = os.path.join(HERE, "static")
 
@@ -88,6 +88,9 @@ class H(BaseHTTPRequestHandler):
                 D.log_tokens(c, "sync_ingest", "local", note=f"{total} rows")
                 return self._json({"ok": True, "rows": total, "files": files,
                                    "cursor": SY.cursor(c)})
+            if u.path == "/api/analysis/explain":
+                return self._json(EX.explain(body.get("ticker"),
+                                             consented=bool(body.get("consented"))))
             if u.path == "/api/analysis/estimate":
                 return self._json(AN.estimate(body.get("ticker"), body.get("model")))
             if u.path == "/api/analysis/run":
