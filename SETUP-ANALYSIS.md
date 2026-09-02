@@ -223,6 +223,39 @@ that produced them. The `analysis/` directory is gitignored and **not** included
 backups — only `portfolio.db` is backed up, so the rendered report survives a restore
 while the raw markdown does not.
 
+## Non-US markets, including NSE and BSE
+
+TradingAgents pulls its data from Yahoo Finance and maps index benchmarks by suffix, so
+Indian listings work — `.NS` benchmarks against NIFTY 50 (`^NSEI`) and `.BO` against
+SENSEX (`^BSESN`). Japan, Hong Kong, London, Toronto, Sydney, Shanghai and Shenzhen are
+mapped too.
+
+| Symbol | Result |
+|---|---|
+| `RELIANCE.NS` | Reliance Industries Ltd, ₹1,313.10 |
+| `TCS.BO` | Tata Consultancy Services, ₹2,345.00 |
+| `HDFCBANK.NS` | HDFC Bank Ltd, ₹700.80 |
+| `500325.BO` | **not found** — BSE numeric codes do not resolve |
+| `TATAMOTORS.NS` | **not found** — the symbol changed |
+
+Two rules: use the **letter symbol**, not the BSE numeric code; and check the symbol
+before spending anything, because plausible-looking tickers can silently return nothing.
+
+The Research tab's ticker list holds your own positions, but **Other…** accepts any
+symbol, and **Check** resolves it for free — no model call, no cost. It runs yfinance
+inside the TradingAgents venv, so it answers for exactly the data source the analysis
+will use.
+
+### What is weaker outside the US
+
+- **Macro context comes from FRED**, which is US data. The macro backdrop in an Indian
+  report is therefore American — Fed policy, US recession odds — not RBI or Indian
+  conditions.
+- **News and sentiment** depend on Yahoo's coverage, which is thinner for Indian
+  listings than for US mega-caps.
+- Trans holds no Indian stocks (Robinhood does not offer them), so the "Against your
+  actual position" panel will be absent — the report is standalone research.
+
 ## In plain English (optional, billed)
 
 The reports are dense financial writing — thousands of words of analyst prose. The

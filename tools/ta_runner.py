@@ -173,8 +173,39 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ticker", required=True)
     ap.add_argument("--date", default=dt.date.today().isoformat())
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=False)
+    ap.add_argument("--probe", action="store_true",
+                    help="resolve the symbol only; no LLM calls, no cost")
     a = ap.parse_args()
+
+    if a.probe:
+        # Cheap sanity check before anyone spends money: does this symbol actually
+        # return data? Non-US symbols need a Yahoo suffix (.NS for NSE, .BO for BSE),
+        # and plenty of plausible-looking tickers resolve to nothing at all.
+        try:
+            import warnings; warnings.filterwarnings("ignore")
+            import yfinance as yf
+            t = yf.Ticker(a.ticker); h = t.history(period="5d")
+            info = {}
+            try: info = t.info or {}
+            except Exception: pass
+            ok = len(h) > 0
+            print(json.dumps({
+                "ok": ok, "ticker": a.ticker,
+                "name": info.get("shortName") or info.get("longName"),
+                "currency": info.get("currency"),
+                "exchange": info.get("fullExchangeName") or info.get("exchange"),
+                "last": round(float(h["Close"].iloc[-1]), 2) if ok else None,
+                "bars": len(h),
+            }))
+            return 0 if ok else 3
+        except Exception as e:
+            print(json.dumps({"ok": False, "ticker": a.ticker,
+                              "error": f"{type(e).__name__}: {e}"}))
+            return 3
+
+    if not a.out:
+        print("--out is required unless --probe", file=sys.stderr); return 2
 
     try:
         from tradingagents.default_config import DEFAULT_CONFIG

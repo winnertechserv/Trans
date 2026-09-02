@@ -155,6 +155,24 @@ def ta_models(cfg=None):
     sub = cfg.get(b, {})
     return sub.get("deep_think_llm"), sub.get("quick_think_llm")
 
+def runner_available():
+    """Just the local pieces: config block, enabled, venv and clone. No LLM backend.
+    Symbol lookup uses yfinance inside that venv and needs no API key, so it must not
+    be gated behind one."""
+    cfg = tradingagents()
+    if "tradingagents" not in load():
+        return False, 'No "tradingagents" block in config.json.'
+    if not cfg.get("enabled"):
+        return False, "Analysis is off. Set tradingagents.enabled = true in config.json."
+    vp = os.path.expanduser(cfg.get("venv_python") or "")
+    if not (vp and os.path.isfile(vp) and os.access(vp, os.X_OK)):
+        return False, f"No TradingAgents interpreter at {vp or '(unset)'}."
+    repo = os.path.expanduser(cfg.get("repo_path") or "")
+    if not os.path.isdir(os.path.join(repo, "tradingagents")):
+        return False, f"{repo or '(unset)'} is not a TradingAgents clone."
+    return True, None
+
+
 def analysis_available():
     """Why analysis can or cannot run. Always returns a dict — never raises — because
     the Research tab must render a helpful message rather than an error."""

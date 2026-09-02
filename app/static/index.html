@@ -452,7 +452,12 @@ async function research(){
     recommendation.</b> Trans neither endorses nor checks its conclusions.</p>
    ${a.ready?`
      <div class="row"><span class="lbl">Ticker</span>
-      <select id="rsel">${held.map(t=>`<option ${t===tick?'selected':''}>${t}</option>`).join('')}</select>
+      <select id="rsel">${held.map(t=>`<option ${t===tick?'selected':''}>${t}</option>`).join('')}
+        <option value="__other" ${STATE.otherTicker?'selected':''}>Other…</option></select>
+      <input id="rother" placeholder="e.g. RELIANCE.NS" value="${STATE.otherTicker||''}"
+        style="width:150px;display:${STATE.otherTicker?'inline-block':'none'}">
+      <button class="act ghost" id="rcheck"
+        style="display:${STATE.otherTicker?'inline-block':'none'}">Check</button>
       ${a.paid?`<span class="lbl">Reasoning model</span>
         <select id="rmodel">${(est.models||[]).map(m=>
           `<option value="${m.id}" ${m.id===(STATE.researchModel||a.deep_think_llm)?'selected':''}
@@ -461,6 +466,12 @@ async function research(){
         ${running.length?'Running…':'Run analysis'}</button>
      </div>
      <p class="mut" id="estline">${a.paid?estLine(est):'Free — local model. Expect several minutes.'}</p>
+     <p class="mut" id="probeline">${STATE.probeMsg||''}</p>
+     <p class="mut" style="font-size:12px">Any symbol Yahoo Finance carries works, not just
+      your holdings. Non-US markets need a suffix — <b>.NS</b> for NSE
+      (<code>RELIANCE.NS</code>), <b>.BO</b> for BSE (<code>TCS.BO</code>). Use the letter
+      symbol, not the BSE numeric code. <b>Check</b> confirms a symbol resolves before you
+      spend anything.</p>
      ${running.length?renderProgress(running[0]):''}`
     :`<div class="banner">${(a.reason||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])).replace(/\n/g,'<br>')}
       <br><br>Setup: <b>SETUP-ANALYSIS.md</b></div>`}
@@ -476,7 +487,28 @@ async function research(){
    </tbody></table></div></div>`:''}
   <div id="rep"></div>`;
   if(a.ready){
-    $('#rsel').onchange=e=>{STATE.researchTicker=e.target.value;};
+    const oth=$('#rother'), chk=$('#rcheck');
+    $('#rsel').onchange=e=>{
+      const v=e.target.value;
+      if(v==='__other'){ STATE.otherTicker=STATE.otherTicker||'';
+        oth.style.display='inline-block'; chk.style.display='inline-block'; oth.focus(); }
+      else { STATE.otherTicker=null; STATE.probeMsg=''; oth.style.display='none';
+        chk.style.display='none'; STATE.researchTicker=v; }
+    };
+    if(oth) oth.oninput=e=>{STATE.otherTicker=e.target.value.trim().toUpperCase();};
+    if(chk) chk.onclick=async()=>{
+      const sym=(oth.value||'').trim().toUpperCase();
+      if(!sym) return;
+      chk.disabled=true; $('#probeline').textContent='Checking '+sym+'…';
+      const r=await post('/api/analysis/probe',{ticker:sym});
+      chk.disabled=false;
+      $('#probeline').innerHTML = r.ok
+        ? `<span class="pos">✓ ${sym}</span> — ${r.name||''} ${r.last!=null?`· last ${r.last} ${r.currency||''}`:''}`
+        : `<span class="neg">✗ ${sym} not found.</span> ` + (sym.includes('.')
+            ? `Check the symbol on Yahoo Finance — some tickers change after a split or demerger.`
+            : `Non-US symbols need a suffix: try <code>${sym}.NS</code> (NSE) or <code>${sym}.BO</code> (BSE).`);
+      STATE.probeMsg=$('#probeline').innerHTML;
+    };
     const ms=$('#rmodel');
     if(ms) ms.onchange=async e=>{
       STATE.researchModel=e.target.value;
@@ -491,7 +523,9 @@ async function research(){
     const op=e.target.dataset&&e.target.dataset.open;
     if(op){go('research',op);return;}
     if(e.target.id==='runr'){
-      const t=$('#rsel').value;
+      const t=$('#rsel').value==='__other'
+        ? ($('#rother').value||'').trim().toUpperCase() : $('#rsel').value;
+      if(!t){alert('Enter a ticker symbol.');return;}
       const mdl=$('#rmodel')?$('#rmodel').value:null;
       if(a.paid){
         const cur=await post('/api/analysis/estimate',{ticker:t,model:mdl});

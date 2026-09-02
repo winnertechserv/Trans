@@ -95,6 +95,8 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/analysis/explain":
                 return self._json(EX.explain(body.get("ticker"),
                                              consented=bool(body.get("consented"))))
+            if u.path == "/api/analysis/probe":
+                return self._json(AN.probe(body.get("ticker")))
             if u.path == "/api/analysis/estimate":
                 return self._json(AN.estimate(body.get("ticker"), body.get("model")))
             if u.path == "/api/analysis/run":

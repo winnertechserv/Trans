@@ -153,6 +153,27 @@ def _env_for(cfg):
     return env
 
 
+def probe(ticker):
+    """Resolve a symbol without spending anything. Runs yfinance in the TradingAgents
+    venv, so it answers for the same data source the analysis will use."""
+    ok, why = C.runner_available()
+    if not ok:
+        return {"ok": False, "error": why}
+    cfg = C.tradingagents()
+    try:
+        p = subprocess.run(
+            [os.path.expanduser(cfg["venv_python"]), RUNNER, "--probe",
+             "--ticker", (ticker or "").strip()],
+            env=_env_for(cfg), capture_output=True, text=True, timeout=60,
+            cwd=os.path.expanduser(cfg["repo_path"]))
+        for line in reversed((p.stdout or "").strip().splitlines()):
+            if line.startswith("{"):
+                return json.loads(line)
+        return {"ok": False, "error": (p.stderr or "no response").strip()[-300:]}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
 def run(ticker, date=None, consented=False, model=None):
     """Start a background run. Returns a job dict immediately — a local multi-agent
     debate takes minutes to tens of minutes, so this must never block the HTTP thread."""
