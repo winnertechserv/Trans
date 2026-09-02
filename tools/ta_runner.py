@@ -193,11 +193,18 @@ def main():
     cfg = DEFAULT_CONFIG.copy()
     try:
         h = usage.handler()
+        # TradingAgentsGraph takes callbacks directly — use that first-class hook, and
+        # keep the global ContextVar registration as a belt-and-braces fallback for
+        # any LLM the graph builds outside the constructor's callback plumbing.
         attached = _attach_globally(h) if h else False
+        try:
+            graph = TradingAgentsGraph(debug=False, config=cfg, callbacks=[h] if h else None)
+            attached = attached or bool(h)
+        except TypeError:
+            graph = TradingAgentsGraph(debug=False, config=cfg)
         if h and not attached:
-            print("warning: could not attach a usage callback — token counts will be "
-                  "unavailable for this run", file=sys.stderr)
-        graph = TradingAgentsGraph(debug=False, config=cfg)
+            print("warning: no usage callback attached — token counts unavailable",
+                  file=sys.stderr)
         final_state, decision = graph.propagate(a.ticker, a.date)
     except Exception as e:
         usage._flush(phase="failed")

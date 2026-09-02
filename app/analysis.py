@@ -346,6 +346,38 @@ def ingest_report(outdir, ticker, date, cfg=None):
     return n
 
 
+def position_context(ticker):
+    """What Trans knows about this holding, so a generic report can be read against the
+    user's actual position. Computed from the database — no model call, no cost.
+
+    TradingAgents has no hook for investor context (propagate() takes only ticker, date
+    and asset type), so this is added alongside its output rather than fed into it.
+    """
+    import analytics as A
+    c = D.connect()
+    try:
+        rows, _ = A.results(c)
+        r = next((x for x in rows if x["ticker"] == ticker.upper()), None)
+        bp = A.buy_program(c, 30)
+        prog = next((t for t in bp["tickers"] if t["ticker"] == ticker.upper()), None)
+    finally:
+        c.close()
+    if not r:
+        return None
+    per_buy = prog["per_buy"] if prog else 0.0
+    buys_30d = prog["n"] if prog else 0
+    ctx = {
+        "ticker": ticker.upper(), "invested": r["invested"], "market_value": r["market_value"],
+        "quantity": r["quantity"], "xirr": r["xirr"], "net_profit": r["net_profit"],
+        "weight": r["weight"], "simple_return": r["simple_return"],
+        "per_buy": per_buy, "buys_30d": buys_30d,
+        "monthly": round(per_buy * buys_30d, 2),
+        "avg_cost": (r["invested"] / r["quantity"]) if r["quantity"] else None,
+        "days_of_buying": (round(r["invested"] / per_buy) if per_buy else None),
+    }
+    return ctx
+
+
 def reports(ticker=None):
     c = D.connect()
     try:
@@ -362,7 +394,8 @@ def reports(ticker=None):
             rows.sort(key=lambda r: r["order"])
             return {"ticker": ticker.upper(), "sections": rows,
                     "created_at": rows[0]["created_at"] if rows else None,
-                    "source": rows[0]["source"] if rows else None}
+                    "source": rows[0]["source"] if rows else None,
+                    "context": position_context(ticker)}
         out = []
         for r in c.execute(
             "SELECT ticker, MAX(created_at) created_at, COUNT(*) n, source FROM ai_notes"

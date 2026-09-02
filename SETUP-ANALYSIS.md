@@ -175,10 +175,36 @@ minute or two and costs nothing.
 
 ## Reading a report
 
-Reports open with a **verdict strip** — rating, price target and time horizon pulled out
-of the decision text — then the sections grouped by stage, with the decision expanded and
-everything else collapsed. Markdown is rendered rather than dumped as raw text, and
-**Close** dismisses the report.
+A report opens with, in order:
+
+1. **Verdict strip** — rating (green for buy, amber for hold, red for sell), price
+   target, confidence and horizon, extracted from the decision text.
+2. **Summary** — the decision's own executive summary, surfaced rather than generated.
+3. **Against your actual position** — see below.
+4. **Sections** grouped by stage, decision expanded, the rest collapsed.
+
+Markdown tables render as real tables (a single report can carry 30+ of them), and
+judgement words are tinted: Buy/Bullish green, Sell/Bearish red, and Confidence/Score
+values as coloured pills.
+
+**Copy** on any section copies that section; **Copy whole report** copies everything as
+markdown. **Close** dismisses it.
+
+## Against your actual position
+
+TradingAgents analyses a ticker in isolation. `propagate()` takes only a symbol, a date
+and an asset type — there is **no hook for investor context**, so it cannot be told you
+are dollar-cost-averaging, nor what you already hold.
+
+Trans therefore computes that panel itself from its own database, with no model call and
+no cost: your daily buy size, monthly rate, invested versus current value, average cost,
+per-ticker XIRR, portfolio weight, how far price sits from your average cost, and what
+the report's target implies from here.
+
+This matters for interpretation. A rating written for a lump-sum trader answers a
+different question from "should I keep adding $10 a day", where entry timing matters far
+less than whether you still want to own the business. The panel says so explicitly, so
+the rating is not mistaken for advice about your actual strategy.
 
 ## Cost estimates are estimates
 
