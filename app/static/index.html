@@ -366,22 +366,25 @@ async function fund(){
 async function syncv(){
   const k=STATE.pk||'daily';
   const META={
-    daily:{title:'Daily delta sync',short:'daily',cadence:'run daily, after market close',
+    daily:{title:`Daily delta sync — ${MKT.flag} ${MKT.label}`,short:'daily',
+      cadence:'run daily, after market close',
       desc:'Fetches orders, positions and quotes newer than what the database already holds. '+
            'Safe to run repeatedly — ingest dedupes on broker order id.'},
-    fundamentals:{title:'Fundamentals refresh',short:'fundamentals',cadence:'run weekly',
+    fundamentals:{title:`Fundamentals refresh — ${MKT.flag} ${MKT.label}`,
+      short:'fundamentals',cadence:'run weekly',
       desc:'Refreshes company metrics for every holding, using the metric set that matters for '+
            'each sector. Fills the “not loaded” rows on the Fundamentals tab.'}};
   const meta=META[k];
-  const [pr,co,bk]=await Promise.all([get('/api/sync/prompt?kind='+k),get('/api/costs'),
+  const [pr,co,bk]=await Promise.all([get('/api/sync/prompt?kind='+k+'&market='+STATE.market),get('/api/costs'),
                                      get('/api/backups')]);
   $('#main').innerHTML=`
   ${STATE.ov.pricing_verified?'':`<div class="banner"><b>Pricing unverified.</b>
     Dollar figures below use placeholder rates in <code>pricing.json</code>. Confirm them at
     anthropic.com/pricing and set <code>"verified": true</code>.</div>`}
   <div class="card"><h2>Sync</h2>
-   <p class="mut">The Robinhood MCP is reachable only from a Claude Code session, so the browser
-    cannot fetch broker data directly. Copy this prompt into Claude Code — it writes JSON into
+   <p class="mut">Prompts below are for <b>${MKT.flag} ${MKT.label}</b> — switch the market
+    at the top to get the other one. The broker MCP is reachable only from a Claude Code
+    session, so the browser cannot fetch broker data directly. Copy this prompt into Claude Code — it writes JSON into
     <code>sync/inbox/</code> and ingests it. No data is copied by hand.</p>
    <div class="row"><span class="lbl">Choose prompt</span>
     <span class="seg">

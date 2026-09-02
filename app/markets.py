@@ -30,12 +30,26 @@ def all_markets():
     return [MARKETS[k] for k in ("us", "in")]
 
 
+# NSE appends a series code to symbols in some segments (BE = trade-to-trade, SM/ST =
+# SME, and others). Zerodha reports these as part of the tradingsymbol, but Yahoo does
+# not use them: MTARTECH-BE.NS is not found, MTARTECH.NS is.
+NSE_SERIES_SUFFIXES = ("-BE", "-BZ", "-BL", "-SM", "-ST", "-IT", "-GS", "-RR")
+
+
+def base_symbol(ticker):
+    t = (ticker or "").upper()
+    for suf in NSE_SERIES_SUFFIXES:
+        if t.endswith(suf):
+            return t[: -len(suf)]
+    return t
+
+
 def yahoo_symbol(ticker, market, exchange=None):
-    """Yahoo Finance symbol for a holding — used by the research integration.
+    """Yahoo Finance symbol for a holding — used by research and fundamentals.
     NSE listings take .NS, BSE takes .BO; US symbols are unsuffixed."""
     if get(market)["key"] != "in":
         return ticker
-    return f"{ticker}.{'BO' if (exchange or '').upper() == 'BSE' else 'NS'}"
+    return f"{base_symbol(ticker)}.{'BO' if (exchange or '').upper() == 'BSE' else 'NS'}"
 
 
 if __name__ == "__main__":

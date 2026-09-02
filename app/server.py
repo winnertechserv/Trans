@@ -64,8 +64,10 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/sync/prompt":
                 k = q.get("kind", ["daily"])[0]
                 pr = SY.write_prompt_files(c)
-                return self._json({"kind": k, "prompt": pr.get(k, pr["daily"]),
-                                   "cursor": SY.cursor(c), "inbox": SY.INBOX})
+                key = f"{mk}:{k}"
+                return self._json({"kind": k, "market": MK.get(mk),
+                                   "prompt": pr.get(key, pr.get(f"{mk}:daily", "")),
+                                   "cursor": SY.cursor(c, mk), "inbox": SY.INBOX})
             if p == "/api/analysis":
                 return self._json({"available": AN.available(),
                                    "estimate": AN.estimate(),
