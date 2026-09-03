@@ -16,6 +16,7 @@ h1{font-size:16px;margin:0;letter-spacing:-.01em}
 .kpi b .pos{color:var(--pos)} .kpi b .neg{color:var(--neg)}
 .kpi b .na{color:var(--mut)}
 .kpi.date b{font-size:13px;font-weight:500;color:var(--mut);padding-top:5px}
+.pxage{display:block;font-size:11px;color:var(--warn);font-weight:500}
 .kpi span{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 nav{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
 nav button{background:none;border:0;padding:11px 14px;color:var(--mut);cursor:pointer;
@@ -304,9 +305,20 @@ async function loadMarket(){
      +`still held. Counted that way rather than by every flow landing in the window, `
      +`because a sale whose purchase predates it would bring proceeds with none of the `
      +`cost and read as a spectacular year.`],
-    ['Data through',h.last_transaction_date
-      ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
-      : 'holdings only', null, 'date']
+    // Two different ages, and conflating them hid a month-old fund NAV behind a
+    // one-day-old trade. Transactions lead; prices are named underneath when they lag.
+    ['Data through',
+     (h.last_transaction_date
+        ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
+        : 'holdings only')
+     + (h.price_days_stale>1 ? `<span class="pxage">prices ${h.price_days_stale}d old</span>` : ''),
+     (h.prices||[]).length
+        ? 'Marks were last refreshed: '
+          + h.prices.map(p=>`${p.asset} ${p.days}d ago`).join(', ')
+          + '. Transactions and prices age separately — a recent trade does not mean '
+          + 'current prices.'
+        : null,
+     'date']
   ].map(([s,v,t,cls])=>`<div class="kpi${cls?' '+cls:''}"`
       +`${t?` title="${String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"`:''}>`
       +`<span>${s}</span><b>${v}</b></div>`).join('');
@@ -339,6 +351,13 @@ function overview(){
   $('#main').innerHTML=`
   ${h.days_stale>2?`<div class="banner">Data is ${h.days_stale} days old. Run a sync from the
     <b>Sync &amp; cost</b> tab.</div>`:''}
+  ${h.price_days_stale>7?`<div class="banner">
+    <b>Prices are ${h.price_days_stale} days old.</b>
+    ${(h.prices||[]).filter(p=>p.days>7).map(p=>`${p.n} ${p.asset} position${p.n>1?'s':''}
+      last marked ${p.oldest}`).join('; ')}. Values and unrealized gain are computed from
+    those marks. Run a sync, and for mutual funds
+    <code>python3 app/navs.py</code> refreshes NAVs from AMFI.
+    </div>`:''}
   ${(o.unreconciled||[]).length?`<div class="banner">
     <b>${o.unreconciled.length} fund${o.unreconciled.length>1?'s hold':' holds'} more units than the
     imported order history accounts for</b> —

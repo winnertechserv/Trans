@@ -44,6 +44,12 @@ GET /api/analysis/status rather than blocking. Report the decision line and wher
 report lives. Always present the result as **third-party generated research, not a
 recommendation**, and never restate it as your own investment advice.
 
+**"refresh navs" / "update nav"** — `python3 app/navs.py`. Fetches AMFI's daily NAV file
+(public, no key, nothing personal sent) and marks every mutual fund position. Zerodha
+funds match on ISIN; Paytm funds carry none, so the scheme name must reduce to exactly one
+Direct/Growth scheme or it is skipped and reported. Report which funds moved and by how
+much. `--dry-run` writes nothing.
+
 **"backup"** — `python3 app/backup.py snapshot manual` (or POST /api/backup). Only the
 database file is copied; code lives in git, not Drive. Snapshots go to
 `<drive root>/trans`, auto-detected on macOS and Linux. Report the filename and

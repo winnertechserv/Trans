@@ -187,7 +187,34 @@ free, so their entire value counts as gain. They carry a **no cost** chip saying
 Do **not** extend this to SGBs, bonds or merger remnants. Those were bought with real
 money that simply is not in the equity tradebook.
 
-### 5. Dividends are invisible on the India side
+### 5. Fund NAVs go stale, and nothing refreshes them by itself
+
+Prices are not live. `positions.price` is whatever the broker reported at the last sync,
+and there is no scheduled job. Zerodha reports a NAV for funds you still hold there;
+**Paytm reports none at all**, so those are marked at the NAV of their most recent
+transaction and drift a little further out of date every week.
+
+```bash
+python3 app/navs.py            # fetch AMFI's daily NAV file and mark every fund
+python3 app/navs.py --dry-run  # show what would change, write nothing
+```
+
+AMFI publishes every Indian scheme's NAV as one public text file — no key, no account,
+nothing personal sent. Funds carrying an ISIN match on it. Paytm funds have none, so the
+scheme name must reduce to exactly one Direct/Growth scheme after filler words are
+dropped; anything ambiguous is skipped and reported rather than guessed at, because a NAV
+attached to the wrong fund is worse than a stale one — a stale price is visibly stale and
+a wrong one is not. Resolved ISINs are stored so the match is made once and can be
+audited.
+
+The header shows how old the marks are alongside the transaction date, and warns past a
+week. The two ages are unrelated: a trade this morning tells you nothing about whether
+prices were refreshed.
+
+**Equities are not covered.** AMFI is funds only; stock prices still come from the broker
+at sync time.
+
+### 6. Dividends are invisible on the India side
 
 Indian equities pay cash into your bank account. There is no reinvestment order to infer
 from, the way DRIP works on the US side, and Kite exposes no dividend endpoint. India
