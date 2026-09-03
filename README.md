@@ -466,7 +466,8 @@ Security issues: [SECURITY.md](SECURITY.md) — please do not open a public issu
 | [Backups](docs/BACKUP.md) | snapshots, Drive, restore, scheduling |
 | [Research setup](docs/RESEARCH.md) | the optional Research tab |
 | [CLAUDE.md](CLAUDE.md) | how Claude Code should operate this repo — this is what makes the trigger words work, so it stays at the root |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | the two hard rules, and how to add a broker |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | the two hard rules, how to add a broker, how to write tests |
+| [docs/MAINTAINING.md](docs/MAINTAINING.md) | reviewing, merging and releasing — for maintainers |
 | [SECURITY.md](SECURITY.md) | what Trans does with your data, and how to report an issue |
 
 ## Cost policy

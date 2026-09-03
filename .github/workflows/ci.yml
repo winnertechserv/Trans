@@ -32,8 +32,8 @@ jobs:
       - name: Compile everything
         run: python -m py_compile app/*.py *.py scripts/*.py samples/*.py tools/*.py
 
-      - name: Unit tests
-        run: python test_xirr.py
+      - name: Tests
+        run: python run_tests.py
 
       - name: Personal-data guard
         run: python scripts/check_clean.py

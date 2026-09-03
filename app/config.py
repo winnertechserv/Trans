@@ -14,10 +14,10 @@ _cache = None
 def load(reload=False):
     global _cache
     if _cache is not None and not reload: return _cache
-    if os.path.exists(PATH):
-        _cache = json.load(open(PATH))
-    elif os.path.exists(EXAMPLE):
-        _cache = json.load(open(EXAMPLE))
+    src = PATH if os.path.exists(PATH) else (EXAMPLE if os.path.exists(EXAMPLE) else None)
+    if src:
+        with open(src) as fh:          # was leaking the handle on every call
+            _cache = json.load(fh)
     else:
         _cache = {}
     return _cache
