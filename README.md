@@ -17,14 +17,46 @@ Data lives in a SQLite file you own. Claude Code is the only tool needed to oper
 
 | Tab | Shows |
 |---|---|
-| **Overview** | allocation, weights, per-ticker XIRR, best and worst performers |
-| **Holdings** | sortable table — XIRR, invested, value, dividends, P/L, simple return |
+| **Overview** | eleven headline figures, searchable allocation with category filter, top movers |
+| **Holdings** | every position, filterable by status and asset; click a flow count to open every trade |
 | **Daily buys** | your recurring programme: per ticker, per day, share of new money |
 | **Dividends** | lifetime total, by year, by ticker |
-| **Analysis** | sector exposure, concentration (top 1/3/5/10), the sub-1% tail, monthly contributions |
-| **Fundamentals** | sector-appropriate metrics per holding |
+| **Analysis** | sector exposure, concentration, the sub-1% tail, capital deployed by month/quarter/year |
+| **Fundamentals** | three-way compare, or every stock against every metric in one grid |
 | **Research** | optional TradingAgents reports per holding (see below) |
 | **Sync & cost** | sync prompts, backup and restore, token/cost ledger |
+
+Every filter, sort and search you set is remembered in the browser, so a screen comes back
+the way you left it.
+
+### The header
+
+Eleven figures, each with a tooltip saying how it is derived:
+
+**Current value · Currently invested · Unrealized gain · Total invested · Total sold ·
+Realized gain/loss · Dividends · Unrealized XIRR · Realized XIRR · Net XIRR · XIRR 1Y**
+
+Money still in and money already out are kept apart, because a single "invested" figure
+reads as a collapse the moment you have sold anything. `Realized + Unrealized + Dividends`
+reconciles to net profit exactly, which is the check that nothing is double-counted.
+
+The four XIRRs are four slices of the same cash flows — still held, fully sold, everything,
+and positions opened in the last year. Each is a real XIRR over its own subset, never a
+blend, so they do not add up to each other and are not meant to.
+
+### Analyses you can run
+
+- **XIRR** per holding and per portfolio, money-weighted, on a 365-day basis
+- **Realised versus unrealised**, split by cost basis rather than guessed
+- **Booked profit per month, quarter or year**, over 1/3/5/10 years or all time, filtered
+  by asset type
+- **Every trade behind a position**, with each sale matched FIFO to the buys it sold —
+  dates, quantities, days held, and the gain on each lot
+- **Allocation and concentration**, top 1/3/5/10 and the sub-1% tail
+- **Fundamentals**, sector-appropriate, one stock, three side by side, or all at once
+- **Re-entry detection** — positions sold out and bought back, where XIRR is set mostly by
+  the first episode
+- **Optional third-party research** through TradingAgents
 
 ## Two markets, kept separate
 
@@ -65,12 +97,42 @@ looks wrong, re-running is the correct fix.
 
 ## Requirements
 
+**Required**
+
 - **macOS or Linux with `python3`.** Standard library only — no `pip install`, and no
   dependency on the `sqlite3` command-line tool (it is missing from many minimal Linux
-  images).
-- **[Claude Code](https://claude.com/claude-code)**, opened in this folder.
-- **A Robinhood account.** Other brokers need `app/sync.py` adapted — see [SETUP.md](SETUP.md).
-- *Optional:* **Google Drive for Desktop**, for backups.
+  images). Verified from a clean checkout: every module imports, and every API endpoint
+  and deep-link route answers with an empty database and no config file present.
+- **[Claude Code](https://claude.com/claude-code)**, opened in this folder. It is what
+  talks to your broker; there are no API keys to manage for syncing.
+- **At least one supported broker account** — see the table below.
+
+**Optional, per feature**
+
+| For | You need |
+|---|---|
+| Paytm Money statements | `pdftotext` (poppler): `brew install poppler` / `apt install poppler-utils` |
+| Backups | Google Drive for Desktop, signed in |
+| Research tab | a TradingAgents checkout and either Ollama or an Anthropic API key |
+| Plain-English report rewrite | `ANTHROPIC_API_KEY` (costs about $0.02 a time, with consent) |
+
+Nothing above is needed to run the dashboard or to import a file.
+
+## Brokers supported
+
+| Broker | Market | How | History |
+|---|---|---|---|
+| **Robinhood** | US | MCP, live | full |
+| **Zerodha (Kite)** | India | MCP for holdings and funds, CSV for history | full, with a tradebook export |
+| **Paytm Money** | India | statement files only | full, one PDF per financial year |
+
+A market can span several brokers — India is Zerodha and Paytm together — and the two
+markets are never blended, because summing them would need an FX rate and currency
+movement would then land inside reported returns.
+
+**[IMPORTING.md](IMPORTING.md) is the full guide**: which file to export from where, how
+to import it, and the five ways Indian data genuinely differs — series codes, renames,
+splits, demergers, and why India shows no dividends.
 
 ---
 
@@ -78,9 +140,15 @@ looks wrong, re-running is the correct fix.
 
 ### 1. Connect your broker to Claude Code
 
+Add whichever you have. Both can be connected at once.
+
 ```bash
 claude mcp add --transport http robinhood https://agent.robinhood.com/mcp/trading
+claude mcp add --transport http kite     https://mcp.kite.trade/mcp
 ```
+
+Paytm Money has no MCP — it is statements only, and needs no setup here. See
+[IMPORTING.md](IMPORTING.md).
 
 ### 2. Restart Claude Code, then authenticate
 
@@ -197,6 +265,16 @@ In Claude Code, in this folder:
 | `classify tickers` | maps unclassified holdings to sectors |
 | `bootstrap` | rebuilds the database from scratch |
 
+To import files instead, drop them in `sync/inbox/` and run `python3 app/ingest.py inbox`.
+Re-importing is always safe — every importer deduplicates, so overlapping exports and
+repeated files add only what is new.
+
+| File | From |
+|---|---|
+| `tradebook-*-EQ.csv` | Zerodha Console → Reports → Tradebook |
+| `tradebook-*-MF.csv` | Zerodha Console → Reports → Tradebook → Mutual funds |
+| `Transactions_*.pdf` | Paytm Money → Reports → Transactions (needs `PAYTM_PDF_PASSWORD`) |
+
 Or use the buttons in the **Sync & cost** tab. The page refreshes itself when new data
 lands, so you do not need to reload.
 
@@ -310,8 +388,10 @@ lives in `config.json`, not in code, so the repo never discloses what you own.
 | Path | Role |
 |---|---|
 | `app/db.py` | schema — transactions, positions, fundamentals, quotes, backups, ledgers |
-| `app/ingest.py` | envelope JSON → SQLite, idempotent |
-| `app/analytics.py` | XIRR, allocation, dividends, buy programme, concentration |
+| `app/ingest.py` | envelope JSON, Zerodha CSVs and Paytm statements → SQLite, idempotent |
+| `app/paytm.py` | Paytm statement parser, checked against each statement's own totals |
+| `app/markets.py` | markets, brokers per market, symbol normalising, renames, demergers |
+| `app/analytics.py` | XIRR (four scopes), cost basis, realised/unrealised, FIFO trade log |
 | `app/sectors.py` | sector → which metrics matter |
 | `app/sync.py` | delta cursor + prompt generation |
 | `app/backup.py` | snapshot, manifest, prune, restore |
@@ -322,6 +402,14 @@ lives in `config.json`, not in code, so the repo never discloses what you own.
 | `portfolio.py` | transactions + positions → per-ticker results |
 | `cli.py` | command-line report |
 | `scripts/` | scheduled backup, pre-commit personal-data guard |
+
+| Doc | Covers |
+|---|---|
+| [IMPORTING.md](IMPORTING.md) | brokers, file formats, and how Indian data differs |
+| [SETUP.md](SETUP.md) | moving to another machine, broker connection details |
+| [BACKUP.md](BACKUP.md) | snapshots, Drive, restore, scheduling |
+| [SETUP-ANALYSIS.md](SETUP-ANALYSIS.md) | the optional Research tab |
+| [CLAUDE.md](CLAUDE.md) | how Claude Code should operate this repo |
 
 ## Cost policy
 
