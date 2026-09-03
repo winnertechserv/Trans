@@ -1,6 +1,7 @@
 """Local dashboard server. Stdlib only — no pip install, matches the repo's
 zero-dependency convention. Binds to 127.0.0.1 so it is never exposed off-machine.
 """
+# SPDX-License-Identifier: Apache-2.0
 import os, sys, json, urllib.parse, datetime as dt
 from http.server import HTTPServer, BaseHTTPRequestHandler
 HERE = os.path.dirname(os.path.abspath(__file__))

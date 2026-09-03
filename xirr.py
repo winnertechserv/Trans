@@ -12,6 +12,7 @@ Uses a 365-day basis, matching Excel/Sheets XIRR.
 
 Pure stdlib - no numpy, no pandas.
 """
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

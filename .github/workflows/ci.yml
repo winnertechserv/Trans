@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Trans claims to need nothing but the standard library. Running across versions
+        # is what makes that testable rather than merely asserted.
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: No third-party imports outside tools/
+        run: |
+          if grep -rnE "^\s*(import|from)\s+(yfinance|langchain|tradingagents|pandas|requests|numpy)" \
+               app/ *.py scripts/ samples/ 2>/dev/null; then
+            echo "::error::app/ and the root must be standard-library only"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: Compile everything
+        run: python -m py_compile app/*.py *.py scripts/*.py samples/*.py tools/*.py
+
+      - name: Unit tests
+        run: python test_xirr.py
+
+      - name: Personal-data guard
+        run: python scripts/check_clean.py
+
+      - name: JavaScript parses
+        run: |
+          python - <<'PY'
+          import re
+          js = "\n".join(re.findall(r"<script>(.*?)</script>",
+                                    open("app/static/index.html").read(), re.S))
+          open("/tmp/app.js", "w").write(js)
+          PY
+          node --check /tmp/app.js
+
+      - name: Demo rebuilds reproducibly
+        run: |
+          python samples/build_demo.py
+          git diff --stat --exit-code samples/demo.db \
+            || echo "note: demo.db differs (dates are relative to today, so this is expected)"
+
+      - name: Smoke test against the demo
+        run: |
+          python app/samples.py load
+          python app/server.py 8791 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8791/api/markets >/dev/null && break
+            sleep 0.5
+          done
+          fail=0
+          for p in "/" "/holdings" "/api/markets" "/api/overview?market=us" \
+                   "/api/overview?market=in" "/api/fundamentals?market=us" \
+                   "/api/allocation?market=us" "/api/contributions?market=us" \
+                   "/api/trades/AAPL?market=us" "/api/analysis/DEMOPOW" \
+                   "/api/health?market=us" "/api/costs"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8791$p")
+            printf "%-38s %s\n" "$p" "$code"
+            [ "$code" = "200" ] || fail=1
+          done
+          exit $fail
+
+      - name: Endpoints answer on an empty database too
+        run: |
+          python app/samples.py clear
+          python app/server.py 8792 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8792/api/markets >/dev/null && break
+            sleep 0.5
+          done
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8792/api/overview?market=us")
+          echo "empty-database overview: $code"
+          [ "$code" = "200" ]

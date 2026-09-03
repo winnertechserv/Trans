@@ -26,12 +26,18 @@ python3 app/samples.py clear    # remove, leaving an empty database
 | **US** | AAPL, MSFT, NVDA, VOO, COST held; PFE sold at a loss |
 | **India** | DEMOCEM, DEMOPOW, a mutual fund, a demerged stock; an ETF sold at a loss |
 
-The US tickers are real, widely held large-caps — a demo built from invented symbols
-teaches nothing. Everything else is fictional and no figure in it is anyone's real
-position.
+The US tickers are real, widely held large-caps — a demo built entirely from invented
+symbols teaches nothing. Every figure is invented, and the prices are illustrative rather
+than current. Nothing here is anyone's real position.
 
-**The Research tab has a genuine TradingAgents report on MSFT**, thirteen sections of it,
-so you can see what that output looks like without spending anything to generate one.
+**The Research tab carries a sample report on `DEMOPOW`** — eight sections, written by
+hand for a company that does not exist. It exercises the same renderer a real run does
+(verdict strip, tables, numbered points, the plain-English rewrite), so you can see the
+shape of the output without spending anything to generate one.
+
+It is fabricated on purpose. Shipping a real model's rating on a real company would put a
+dated opinion about an actual security into every clone of this repo, and it would go
+stale the week after it was written.
 
 ## It is deliberately not tidy
 

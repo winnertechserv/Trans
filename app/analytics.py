@@ -1,6 +1,7 @@
 """Read from SQLite, compute every number the dashboard shows.
 Reuses the existing xirr.py / portfolio.py rather than reimplementing the solver.
 """
+# SPDX-License-Identifier: Apache-2.0
 import os, sys, datetime as dt, collections
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -73,6 +73,111 @@ FUNDAMENTALS = [
 ]
 
 
+
+# Sections of the fabricated report, in the shape app/analysis.py stores them: `ta:<kind>`
+# rows in ai_notes. Written to exercise the renderer — the verdict strip reads Rating,
+# Confidence and Horizon out of the decision section; the markdown pipeline handles the
+# table, the numbered points and the bold labels — without asserting anything about a real
+# security. Demo Power Limited does not exist.
+REPORT = [
+    ("ta:decision", """
+**Rating**: Hold
+**Confidence**: Medium
+**Horizon**: 12 months
+
+**Executive Summary**: Demo Power Limited has re-rated sharply since the position was
+opened and now trades above the range this analysis considers supportable. The operating
+story is intact; the price already reflects it. Holding is reasonable. Adding at these
+levels is not, on the evidence below.
+
+This is a fabricated report about a company that does not exist. It ships with the demo
+so the Research tab has something to render, and so you can see the shape of the output
+before spending anything to generate a real one.
+"""),
+    ("ta:fundamentals", """
+**What the numbers say**
+
+| Metric | Demo Power | Sector median | Read |
+|---|---|---|---|
+| P/E | 41.6x | 24.2x | Expensive |
+| P/B | 7.2x | 3.1x | Expensive |
+| Net margin | 11.4% | 8.9% | Better than peers |
+| Revenue growth (YoY) | 18.3% | 9.7% | Clearly better |
+| Debt / equity | 0.34x | 0.71x | Conservative |
+
+The premium is real and partly earned: margins and growth both beat the sector, and the
+balance sheet carries less debt than most of it. The question is not whether the business
+is better. It is whether it is 70% better, which is what the multiple is asking.
+"""),
+    ("ta:market", """
+**Price behaviour**
+
+1) The stock is up roughly 15% against an entry three months ago, against a sector that
+   is flat over the same window.
+2) Volume on up-days has been running well above the trailing average, which usually
+   means the move is being bought rather than drifting.
+3) It sits near the top of its 52-week range, so there is no technical support close
+   beneath the current price.
+
+None of this says anything about value. It says the market has already noticed.
+"""),
+    ("ta:news", """
+**Recent developments**
+
+- A large order win was announced during the quarter, which accounts for much of the
+  re-rating.
+- Management guided margins slightly higher for the coming year.
+- An input-cost pass-through remains unresolved and is the clearest near-term risk.
+
+Order wins are lumpy. One of them is not a trend, and the guidance assumes the cost
+pass-through lands.
+"""),
+    ("ta:bull", """
+**The case for holding on**
+
+The order book gives visibility that most of the sector does not have, and the balance
+sheet means growth does not need financing. If margins hold at the guided level, today's
+multiple compresses on its own within two years without the price falling.
+"""),
+    ("ta:bear", """
+**The case against adding**
+
+At 41.6x the multiple assumes the guidance lands and the order book converts. Both are
+plausible; neither is certain. A single missed quarter re-rates a stock priced like this
+much harder than one priced at the sector median, and there is no technical support
+nearby to slow it.
+"""),
+    ("ta:risk_neutral", """
+**Where the two meet**
+
+Both cases agree on the business and disagree only on the price. That is the honest
+summary, and it is why the rating is Hold rather than Buy or Sell: the position is worth
+keeping, and the entry price for new money is worse than the one already paid.
+
+**Position sizing**: this holding is a small share of the portfolio. Nothing here argues
+for changing that in either direction.
+"""),
+    ("ta:plain", """
+**In plain English**
+
+You own this. It has gone up a lot, quickly.
+
+The company is genuinely doing well — it grows faster than its competitors, keeps more of
+each rupee it earns, and does not owe much. That part is not in doubt.
+
+The catch is the price. You are paying about 42 times yearly profits, where similar
+companies cost about 24 times. You are paying up front for growth that has not happened
+yet. If it happens, fine. If one quarter disappoints, a stock priced this way falls
+further than a cheaper one would.
+
+So: keeping what you have is sensible. Buying more at this price is a different decision
+from the one you made when you bought it, and this analysis does not support it.
+
+*Fabricated example. Demo Power Limited is not a real company.*
+"""),
+]
+
+
 def main():
     if os.path.exists(OUT):
         os.remove(OUT)
@@ -110,22 +215,19 @@ def main():
         c.execute("INSERT OR REPLACE INTO fundamentals(ticker,asof,metric,value,text_value)"
                   " VALUES(?,?,?,?,NULL)", (tick, today, metric, val))
 
-    # Carry the real MSFT research report across when one exists locally, so the Research
-    # tab has something to show. Public-company analysis, nothing personal in it.
-    src = os.path.join(ROOT, "portfolio.db")
+    # A fabricated report, written by hand, on a company that does not exist.
+    #
+    # This used to copy a real TradingAgents run out of whatever portfolio.db happened to
+    # be sitting next to it. That was wrong twice over: it published a dated model rating
+    # on a named public company, and it meant nobody else could rebuild the demo — clone
+    # the repo, run this script, and you got a demo with no report at all.
     n_notes = 0
-    if os.path.exists(src):
-        s = sqlite3.connect(src); s.row_factory = sqlite3.Row
-        try:
-            for r in s.execute("SELECT ticker,created_at,kind,content,source"
-                               " FROM ai_notes WHERE ticker='MSFT'"):
-                c.execute("INSERT INTO ai_notes(ticker,created_at,kind,content,source)"
-                          " VALUES(?,?,?,?,?)",
-                          (r["ticker"], r["created_at"], r["kind"], r["content"], r["source"]))
-                n_notes += 1
-        except sqlite3.Error:
-            pass
-        s.close()
+    for kind, body in REPORT:
+        c.execute("INSERT INTO ai_notes(ticker,created_at,kind,content,source)"
+                  " VALUES(?,?,?,?,?)",
+                  ("DEMOPOW", f"{today}T09:00:00", kind, body.strip(),
+                   "demo/sample-report"))
+        n_notes += 1
 
     c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('demo','1')")
     c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('demo_built',?)", (today,))

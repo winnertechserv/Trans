@@ -4,6 +4,7 @@
     python3 cli.py --transactions transactions.csv --positions positions.csv
     python3 cli.py -t txns.csv -p pos.csv --json out.json
 """
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

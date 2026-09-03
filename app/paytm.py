@@ -19,6 +19,7 @@ Three things about the format drive the design:
     checksum worth using: parse_text returns them alongside the rows so the caller can
     refuse a file that does not add up rather than importing a partial year.
 """
+# SPDX-License-Identifier: Apache-2.0
 import re, collections
 
 MONTHS = {m: i + 1 for i, m in enumerate(

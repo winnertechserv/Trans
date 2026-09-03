@@ -72,6 +72,9 @@ tbody tr:hover{background:var(--chip)}
 .dense td:first-child,.dense th:first-child{position:sticky;left:0;background:var(--panel)}
 .chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
   font-size:10px;cursor:help}
+footer{margin:26px 22px 30px;padding-top:14px;border-top:1px solid var(--line);
+  color:var(--mut);font-size:11px;line-height:1.6;max-width:900px}
+footer b{color:var(--ink)}
 .wrap{overflow-x:auto}
 .bar{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;min-width:60px}
 .bar i{display:block;height:100%;background:var(--acc)}
@@ -161,6 +164,12 @@ details[open]{padding-bottom:10px}
 </style></head><body>
 <header><h1>Trans</h1><span class="seg" id="mkt"></span><div class="kpis" id="kpis"></div></header>
 <nav id="nav"></nav><main id="main">loading…</main>
+<footer>
+  <b>Not investment advice.</b> Figures are computed from data you supplied and can be
+  wrong — verify anything that matters against your broker's own statements. Trans is not
+  affiliated with any broker. Provided as is, without warranty.
+  <span class="mut">Apache-2.0</span>
+</footer>
 <dialog id="consent"></dialog>
 <dialog id="tlog"></dialog>
 <script>

@@ -4,6 +4,7 @@ Two entry points:
   bootstrap  - one-time load of the full history already fetched
   inbox      - ingest any envelope JSON dropped into sync/inbox/ by Claude Code
 """
+# SPDX-License-Identifier: Apache-2.0
 import json, os, sys, glob, csv, re, collections, datetime as dt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db as D

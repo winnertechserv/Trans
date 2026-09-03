@@ -8,6 +8,7 @@ XIRR needs no cost-basis method - it is purely cash-flow driven, so FIFO
 vs average cost never enters into it. Reinvested dividends also handle
 themselves: they show up as a dividend inflow plus a buy outflow.
 """
+# SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 

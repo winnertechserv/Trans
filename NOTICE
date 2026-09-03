@@ -1,0 +1,42 @@
+Trans — transparency for your portfolio
+Copyright 2026 Abhinav Srivastava
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+
+NO AFFILIATION
+--------------
+Trans is an independent project. It is not affiliated with, endorsed by, sponsored
+by, or approved by Robinhood, Zerodha, Kite, Paytm Money, Anthropic, Google, or any
+other company named in this repository. Those names appear only to say what the
+software connects to or runs on, and remain the trademarks of their owners.
+
+
+NOT INVESTMENT ADVICE
+---------------------
+Trans computes and displays figures from data you supply. It does not recommend,
+and nothing it produces is investment advice, a recommendation, or a solicitation.
+The author is not a registered investment adviser in any jurisdiction. Verify
+anything that matters against your broker's own statements before acting or filing
+on it. See the disclaimer in README.md.
+
+
+THIRD-PARTY SOFTWARE
+--------------------
+TradingAgents — https://github.com/TauricResearch/TradingAgents — Apache License 2.0.
+  Not bundled and not redistributed here. The optional Research feature calls its
+  public API from a virtualenv you install yourself; tools/ta_runner.py is this
+  project's own code and contains none of theirs.
+
+Trans itself depends on nothing beyond the Python standard library.
+
+
+THIRD-PARTY DATA
+----------------
+pricing.json holds published model prices used to estimate the cost of optional
+paid features. It ships with "verified": false because prices change and this copy
+is a convenience, not a quotation. Confirm current rates with the provider.
+
+samples/ contains invented data created for this project. The US ticker symbols in
+the demo refer to real companies nominatively; no figure in the demo is anyone's
+actual position, and the sample research report is fabricated for illustration.

@@ -1,5 +1,9 @@
 # Trans — working notes for Claude Code
 
+*Not documentation — this file is loaded automatically by Claude Code when it is opened in
+this folder, and it is what makes the trigger words below actually work. It has to stay at
+the repo root. Human-facing docs are in [docs/](docs/).*
+
 **Trans** — transparency for your portfolio: a local dashboard over brokerage data. `./run.sh` → http://127.0.0.1:8787
 
 Config lives in **`config.json`**, which is gitignored: account number, Drive folder,

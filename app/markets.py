@@ -5,6 +5,7 @@ movement would then land inside reported returns, which is real but is not stock
 performance. So there is deliberately no "All" view: you look at one market at a time,
 each in its own currency.
 """
+# SPDX-License-Identifier: Apache-2.0
 
 MARKETS = {
     "us": {"key": "us", "label": "US", "flag": "🇺🇸", "broker": "robinhood",

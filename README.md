@@ -9,6 +9,25 @@ each holding's sector.
 Everything runs on your machine. **Python standard library only — nothing to install.**
 Data lives in a SQLite file you own. Claude Code is the only tool needed to operate it.
 
+> ### Not investment advice
+>
+> Trans computes and displays figures from data **you** supply. It does not recommend
+> anything, and nothing it produces is investment advice, a recommendation, or a
+> solicitation to buy or sell. The author is not a registered investment adviser in any
+> jurisdiction.
+>
+> **The numbers can be wrong.** Brokerage data is messier than it looks:
+> [docs/IMPORTING.md](docs/IMPORTING.md) documents five categories of Indian broker data
+> — series codes, renames, splits, demergers, missing dividends — that each produced a
+> materially wrong figure before they were handled, and there will be others nobody has
+> hit yet. Verify anything that matters against your broker's own statements before
+> acting on it or filing with it.
+>
+> The optional Research tab surfaces output from a third-party multi-agent model. That is
+> generated research, clearly attributed, and still not advice.
+>
+> Provided **as is, without warranty of any kind** — see [LICENSE](LICENSE) §7 and §8.
+
 ```bash
 ./run.sh --demo   # optional: install a sample portfolio to look at first
 ./run.sh          # http://127.0.0.1:8787
@@ -388,6 +407,14 @@ sectors** across **38 metrics** and picks per holding:
 Edit `SECTOR_METRICS` in `app/sectors.py` to change what appears. Your ticker→sector map
 lives in `config.json`, not in code, so the repo never discloses what you own.
 
+## Licence and contributing
+
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Contributions are welcome;
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the two rules that matter most (never commit
+real broker data, and `app/` stays standard-library-only) plus how to add a broker.
+
+Security issues: [SECURITY.md](SECURITY.md) — please do not open a public issue.
+
 ## Project layout
 
 | Path | Role |
@@ -415,7 +442,9 @@ lives in `config.json`, not in code, so the repo never discloses what you own.
 | [Setup reference](docs/SETUP.md) | moving to another machine, broker connection details |
 | [Backups](docs/BACKUP.md) | snapshots, Drive, restore, scheduling |
 | [Research setup](docs/RESEARCH.md) | the optional Research tab |
-| [CLAUDE.md](CLAUDE.md) | how Claude Code should operate this repo |
+| [CLAUDE.md](CLAUDE.md) | how Claude Code should operate this repo — this is what makes the trigger words work, so it stays at the root |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | the two hard rules, and how to add a broker |
+| [SECURITY.md](SECURITY.md) | what Trans does with your data, and how to report an issue |
 
 ## Cost policy
 
