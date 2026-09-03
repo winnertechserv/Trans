@@ -22,13 +22,15 @@ PY
 }
 
 case "${1:-}" in
-  --demo)    exec python3 app/samples.py load "$2" ;;
+  --demo)    exec python3 app/samples.py load "${2:-}" ;;
   --clear-demo) exec python3 app/samples.py clear ;;
   --restore) exec python3 app/restore_cli.py ;;
   --backup)  exec python3 app/backup.py snapshot manual ;;
   --help|-h)
     cat <<'MSG'
 ./run.sh              start the dashboard
+./run.sh --demo       install a sample portfolio and look around first
+./run.sh --clear-demo remove it, leaving an empty database
 ./run.sh --restore    restore a snapshot from your Google Drive folder
 ./run.sh --backup     write a snapshot now
 ./run.sh <port>       start on a specific port
@@ -36,17 +38,24 @@ MSG
     exit 0 ;;
 esac
 
+# config.json is needed to SYNC from a broker, not to run. Refusing to start without one
+# locked newcomers out of the demo, which is the thing the README tells them to try first.
 if [ ! -f config.json ]; then
-  cat <<'MSG'
-No config.json yet.
+  if [ -f "$DB" ]; then
+    echo "No config.json — running without broker sync. Copy config.example.json to"
+    echo "config.json when you want to connect one."
+    echo
+  else
+    cat <<'MSG'
+No database and no config.json yet. Two ways to start:
 
-  cp config.example.json config.json
+  ./run.sh --demo        look around with a sample portfolio, no broker needed
 
-Then set your broker account number. To find it, open Claude Code in this folder
-and say:  accounts
-(If the Robinhood tools are missing, connect the server first — see README.md.)
+  cp config.example.json config.json     then connect a broker and say `sync`
+                                         in Claude Code (see README.md)
 MSG
-  exit 1
+    exit 1
+  fi
 fi
 
 # Hooks are not carried by a clone, so switch the personal-data guard on locally. One
