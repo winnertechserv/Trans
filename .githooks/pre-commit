@@ -1,0 +1,5 @@
+#!/bin/sh
+# Refuse commits containing personal data. Enabled by `git config core.hooksPath .githooks`,
+# which ./run.sh does for you on first start — hooks are not carried by a clone, so the
+# check has to be switched on locally once.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_clean.py"

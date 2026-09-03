@@ -47,6 +47,11 @@ MSG
   exit 1
 fi
 
+# Hooks are not carried by a clone, so switch the personal-data guard on locally. One
+# line, idempotent, and it means an accidental `git add -A` is refused rather than pushed.
+[ -d .git ] && [ "$(git config core.hooksPath 2>/dev/null)" != ".githooks" ] \
+  && git config core.hooksPath .githooks 2>/dev/null || true
+
 python3 app/db.py >/dev/null            # ensure schema
 python3 app/sync.py >/dev/null 2>&1 || true   # (re)generate sync/prompts/*.txt
 

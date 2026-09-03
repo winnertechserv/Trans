@@ -12,6 +12,13 @@ sync/archive/*
 !sync/inbox/.gitkeep
 !sync/archive/.gitkeep
 sync/prompts/*.txt
+
+# Broker exports wherever they land, not only under sync/. A file dragged to the repo
+# root, or a folder renamed, should still be uncommittable. No PDF belongs in this repo.
+tradebook*.csv
+Transactions_*.pdf
+*statement*.csv
+*.pdf
 transactions.csv
 positions.csv
 report.json
