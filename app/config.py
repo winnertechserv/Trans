@@ -193,7 +193,7 @@ def analysis_available():
            "reason": None}
     if "tradingagents" not in load():
         out["reason"] = ('No "tradingagents" block in config.json. '
-                         "Copy it from config.example.json — see SETUP-ANALYSIS.md.")
+                         "Copy it from config.example.json — see docs/RESEARCH.md.")
         return out
     if not cfg.get("enabled"):
         out["reason"] = 'Analysis is off. Set tradingagents.enabled = true in config.json.'

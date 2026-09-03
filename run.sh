@@ -22,6 +22,8 @@ PY
 }
 
 case "${1:-}" in
+  --demo)    exec python3 app/samples.py load "$2" ;;
+  --clear-demo) exec python3 app/samples.py clear ;;
   --restore) exec python3 app/restore_cli.py ;;
   --backup)  exec python3 app/backup.py snapshot manual ;;
   --help|-h)

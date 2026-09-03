@@ -15,7 +15,9 @@ def tracked():
     return [f for f in r.stdout.splitlines() if f]
 
 FORBIDDEN_PATHS = [
-    (re.compile(r"\.db$|\.db-wal$|\.db-shm$"), "SQLite database"),
+    # samples/demo.db is the one database that belongs in git: entirely invented data,
+    # rebuildable with samples/build_demo.py. Every other .db is someone's portfolio.
+    (re.compile(r"^(?!samples/demo\.db$).*\.db$|\.db-wal$|\.db-shm$"), "SQLite database"),
     # Anything under a sync folder is raw broker data whatever its extension. The old
     # rule named only .json, so Zerodha tradebook CSVs (account code in the filename)
     # and Paytm statement PDFs (PAN, address, phone) were reported clean and committed.
@@ -36,6 +38,10 @@ def secrets():
         for v in b.values():
             if v and v != "REPLACE_ME" and len(str(v)) >= 6: out.add(str(v))
     return out
+
+# Files allowed to name tickers because they describe the shipped demo, not a portfolio.
+DEMO_FILES = {"samples/build_demo.py", "docs/DEMO.md"}
+
 
 def holdings():
     """Your ticker list is personal — this repo is shared, so it must stay in config."""
@@ -61,6 +67,12 @@ def main():
     if held:
         for f in files:
             if not f.endswith((".py", ".md", ".html")) or f in ("config.example.json",):
+                continue
+            # Two files name large-cap US tickers on purpose: the demo builder and the
+            # doc describing it. A demo built from invented symbols teaches nothing, and
+            # no rule can tell that apart from a leak. Exempted by exact name rather than
+            # by prefix, so the hole cannot widen without someone editing this line.
+            if f in DEMO_FILES:
                 continue
             if not os.path.isfile(f): continue
             try: txt = open(f, "r", errors="ignore").read()

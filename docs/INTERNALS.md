@@ -76,4 +76,4 @@ Weekly-ish, run the **Fundamentals** prompt to refresh company metrics.
 | GET | `/api/analysis` `/api/analysis/<t>` `/api/analysis/status` | availability, stored report, job state |
 | POST | `/api/analysis/estimate` `/api/analysis/run` | cost range; start a background run (paid runs need consent) |
 
-See `../BACKUP.md` for why backups use `VACUUM INTO` rather than `cp`.
+See `BACKUP.md` for why backups use `VACUUM INTO` rather than `cp`.

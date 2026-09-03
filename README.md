@@ -10,8 +10,13 @@ Everything runs on your machine. **Python standard library only — nothing to i
 Data lives in a SQLite file you own. Claude Code is the only tool needed to operate it.
 
 ```bash
+./run.sh --demo   # optional: install a sample portfolio to look at first
 ./run.sh          # http://127.0.0.1:8787
 ```
+
+New here? **`./run.sh --demo`** fills the app with an invented portfolio across both
+markets, including a real research report, so you can see what it does before connecting a
+broker. **`./run.sh --clear-demo`** removes it. See [docs/DEMO.md](docs/DEMO.md).
 
 ## What you get
 
@@ -130,7 +135,7 @@ A market can span several brokers — India is Zerodha and Paytm together — an
 markets are never blended, because summing them would need an FX rate and currency
 movement would then land inside reported returns.
 
-**[IMPORTING.md](IMPORTING.md) is the full guide**: which file to export from where, how
+**[Importing your data](docs/IMPORTING.md) is the full guide**: which file to export from where, how
 to import it, and the five ways Indian data genuinely differs — series codes, renames,
 splits, demergers, and why India shows no dividends.
 
@@ -148,7 +153,7 @@ claude mcp add --transport http kite     https://mcp.kite.trade/mcp
 ```
 
 Paytm Money has no MCP — it is statements only, and needs no setup here. See
-[IMPORTING.md](IMPORTING.md).
+[Importing your data](docs/IMPORTING.md).
 
 ### 2. Restart Claude Code, then authenticate
 
@@ -304,7 +309,7 @@ data is and regenerates the sync prompts to match. Restore a snapshot from two w
 and the next `sync` fetches exactly those two weeks — nothing refetched, nothing missed.
 
 Depth — why snapshots use `VACUUM INTO` rather than `cp`, the manifest format, retention,
-and why "backed up" means *queued to Drive* — is in **[BACKUP.md](BACKUP.md)**.
+and why "backed up" means *queued to Drive* — is in **[Backups](docs/BACKUP.md)**.
 
 ## Moving to another computer
 
@@ -317,7 +322,7 @@ cp config.example.json config.json     # edit: account number
 ```
 
 Then say `sync` to catch up on anything after that snapshot. Full walkthrough in
-[SETUP.md](SETUP.md).
+[Setup reference](docs/SETUP.md).
 
 ## Command reference
 
@@ -350,7 +355,7 @@ Gitignored. Holds every personal value in the project.
 | `backup.max_age_days` | staleness threshold for automatic backups (default 7) |
 | `backup.keep_daily` / `keep_monthly` | retention (default 30 / 12) |
 | `port` | default 8787 |
-| `tradingagents` | optional research integration — see [SETUP-ANALYSIS.md](SETUP-ANALYSIS.md) |
+| `tradingagents` | optional research integration — see [Research setup](docs/RESEARCH.md) |
 
 ## Research (optional)
 
@@ -367,7 +372,7 @@ logging before every run).
 Output is third-party generated research, clearly attributed — **not a recommendation**,
 and not checked by Trans.
 
-Setup: **[SETUP-ANALYSIS.md](SETUP-ANALYSIS.md)**.
+Setup: **[Research setup](docs/RESEARCH.md)**.
 
 ## Sector-aware fundamentals
 
@@ -405,10 +410,11 @@ lives in `config.json`, not in code, so the repo never discloses what you own.
 
 | Doc | Covers |
 |---|---|
-| [IMPORTING.md](IMPORTING.md) | brokers, file formats, and how Indian data differs |
-| [SETUP.md](SETUP.md) | moving to another machine, broker connection details |
-| [BACKUP.md](BACKUP.md) | snapshots, Drive, restore, scheduling |
-| [SETUP-ANALYSIS.md](SETUP-ANALYSIS.md) | the optional Research tab |
+| [The demo portfolio](docs/DEMO.md) | try the app with sample data before connecting anything |
+| [Importing your data](docs/IMPORTING.md) | brokers, file formats, and how Indian data differs |
+| [Setup reference](docs/SETUP.md) | moving to another machine, broker connection details |
+| [Backups](docs/BACKUP.md) | snapshots, Drive, restore, scheduling |
+| [Research setup](docs/RESEARCH.md) | the optional Research tab |
 | [CLAUDE.md](CLAUDE.md) | how Claude Code should operate this repo |
 
 ## Cost policy
@@ -448,7 +454,7 @@ leaking into committed code.
 | Backups succeed but Drive stays empty | Drive is paused, signed out, or out of quota — check the menu-bar icon |
 | Fundamentals mostly "not loaded" | run `sync fundamentals` |
 | Fundamentals metrics look generic | run `classify tickers` |
-| Research tab says it is unavailable | it names the missing piece — see [SETUP-ANALYSIS.md](SETUP-ANALYSIS.md) |
+| Research tab says it is unavailable | it names the missing piece — see [Research setup](docs/RESEARCH.md) |
 
 ## Library
 
@@ -456,7 +462,7 @@ leaking into committed code.
 produce a flat transaction list plus a holdings snapshot works.
 
 ```bash
-python3 cli.py -t sample_all.csv -p sample_positions.csv
+python3 cli.py -t samples/all.csv -p samples/positions.csv
 python3 test_xirr.py     # 16 cases incl. Microsoft's documented XIRR example
 ```
 

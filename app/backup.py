@@ -10,7 +10,7 @@ The upload itself is done by Google Drive for Desktop, not by this code, and it 
 asynchronous: this function returns as soon as the file is written locally, typically
 well before the upload finishes. Writing the file is therefore "queued to Drive", not
 "safely in the cloud". If Drive is signed out, paused, or out of quota the local write
-still succeeds and nothing ever uploads — the app cannot detect that. See BACKUP.md.
+still succeeds and nothing ever uploads — the app cannot detect that. See docs/BACKUP.md.
 """
 import os, sys, json, glob, shutil, sqlite3, hashlib, datetime as dt, socket
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
