@@ -4,7 +4,7 @@ Reuses the existing xirr.py / portfolio.py rather than reimplementing the solver
 import os, sys, datetime as dt, collections
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import db as D, sectors as S, markets as M
+import db as D, sectors as S, markets as M, config as CFG
 from portfolio import Transaction, Position, analyse
 import portfolio as P
 
@@ -78,11 +78,14 @@ def cost_basis(c, market=None):
             avg = st[1] / st[0] if st[0] else 0.0
             st[0] -= q_; st[1] -= q_ * avg
 
+    dm = CFG.demergers()
     out, guessed = {}, []
     for t, qty in held.items():
         if abs(qty) < 1e-9:
             continue
-        if t in have:
+        if M.demerged_from(t, dm):
+            out[t] = 0.0          # cost stays with the parent it was carved from
+        elif t in have:
             out[t] = have[t]
         elif t not in broken and run[t][0] > 1e-9:
             out[t] = run[t][1]
@@ -174,7 +177,8 @@ def results(c, as_of=None, market=None):
     for p in c.execute(q, br):
         if p["ticker"] in seen:
             continue
-        inv = (p["avg_cost"] or 0) * p["quantity"]
+        inv = 0.0 if M.demerged_from(p["ticker"], CFG.demergers()) \
+              else (p["avg_cost"] or 0) * p["quantity"]
         val = (p["price"] or 0) * p["quantity"]
         rows.append({
             "ticker": p["ticker"], "xirr": None,
@@ -207,10 +211,15 @@ def results(c, as_of=None, market=None):
         # These rows already carry a note from the XIRR solver ("need at least one
         # negative and one positive cash flow"), which is a symptom, not the cause — so
         # the cause replaces it rather than being skipped for its presence.
-        if r["invested"] == 0 and r["proceeds"] > 0:
-            r["note"] = ("no purchase on record — shares received through a demerger or "
-                         "corporate action, whose cost sits with the parent holding. "
-                         "Net P/L here is the full sale proceeds, not a return on capital.")
+        if r["invested"] == 0 and (r["proceeds"] > 0 or r["market_value"] > 0):
+            par = M.demerged_from(r["ticker"], CFG.demergers())
+            r["note"] = (
+                f"demerged from {par} — the whole cost stays with {par}, so these shares "
+                "carry none and their entire value counts as gain."
+                if par else
+                "no purchase on record — shares received through a demerger or corporate "
+                "action, whose cost sits with the parent holding. Net P/L here is the "
+                "full sale proceeds, not a return on capital.")
             r["no_cost"] = True
         b = basis.get(r["ticker"])
         r["cost_basis"] = b

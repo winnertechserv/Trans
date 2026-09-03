@@ -103,6 +103,14 @@ regenerates them on every start; if you need them sooner, run `python3 app/sync.
   scheme is spelled several ways across years. Paytm reports no holdings or live NAV, so
   positions are derived from the transactions and marked at the last transacted NAV, with
   `asof` showing how stale that is.
+- **Demerged shares carry no cost basis** (`markets.DEMERGERS`, extendable via
+  `demergers` in config.json). A demerger should apportion the parent's basis between
+  parent and children; Zerodha instead gives the children their own average and leaves
+  the parent's untouched, counting the same money twice — VEDL's 120 shares cost 34,680
+  and the four Vedanta entities carried a further 16,528 nobody paid. Treating the
+  children as free puts the whole cost on the parent. Do NOT extend this to SGBs, bonds
+  or merger remnants: those were bought with real money that simply is not in the equity
+  tradebook.
 - **India spans two brokers.** `markets.brokers_of()` returns them; reads use
   `broker IN (...)`. `broker_of()` is still the primary, for sync prompts.
 - **Zerodha mutual funds need `get_mf_holdings`.** They sit outside the demat, so

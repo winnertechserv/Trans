@@ -87,6 +87,35 @@ RENAMES = {
 }
 
 
+# Shares allotted by a demerger, mapped to the parent they were carved out of.
+#
+# A demerger should apportion the parent's cost basis between parent and children.
+# Zerodha does not: it assigns the children their own average while leaving the parent's
+# untouched, so the same money is counted twice. VEDL's 120 remaining shares cost 34,680
+# — confirmed by running FIFO over the purchases, which lands on the broker's own
+# average of 289.00 to the paisa — and the four Vedanta entities carry a further 16,528
+# that was never paid.
+#
+# Treating the children as free shares puts the whole cost on the parent, where the money
+# actually went. It is one of three defensible conventions; the official apportionment
+# ratio from the scheme document is the right answer for tax, and is not something the
+# broker reports. `demergers` in config.json extends this per user.
+DEMERGERS = {
+    "VAML": "VEDL",        # Vedanta demerger, 2025
+    "VEDPOWER": "VEDL",
+    "VISL": "VEDL",
+    "VOGL": "VEDL",
+}
+
+
+def demerged_from(ticker, extra=None):
+    """Parent a holding was demerged out of, or None if it was bought outright."""
+    t = (ticker or "").upper()
+    if extra and t in extra:
+        return extra[t]
+    return DEMERGERS.get(t)
+
+
 def canonical_symbol(ticker, aliases=None):
     """Base symbol with any rename applied — the form both trades and holdings use."""
     t = base_symbol(ticker)
