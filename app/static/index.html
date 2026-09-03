@@ -315,7 +315,8 @@ async function boot(){
   applyRoute(routeFrom(location.pathname),{replace:true});   // deep link / refresh
 }
 function render(){
-  $('#main').classList.toggle('full', tab==='holdings');   // wide table, not prose
+  // Wide tables, not prose.
+  $('#main').classList.toggle('full', tab==='holdings'||(tab==='fund'&&fundView==='matrix'));
   ({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();
 }
 
@@ -818,7 +819,96 @@ async function analysis(){
   wire();
 }
 
+// Fundamentals has two shapes. Compare puts three tickers side by side with metrics down
+// the page; the matrix puts every stock down the page with metrics across it. The first
+// answers "how do these three differ", the second "which of mine is cheapest".
+let fundView=pref('fundView','compare');
+let fmQ=pref('fmQ',''), fmSec=pref('fmSec',''), fmKey=pref('fmKey','ticker'),
+    fmDir=pref('fmDir',1), fmExtra=pref('fmExtra',[]);
+
+async function fundMatrix(){
+  const d=await get('/api/fundamentals?market='+STATE.market
+    +(fmExtra.length?'&extra='+encodeURIComponent(fmExtra.join(',')):''));
+  if(fmSec && !d.rows.some(r=>r.sector_label===fmSec)) fmSec='';
+  const q=fmQ.trim().toUpperCase();
+  const rows=d.rows.filter(r=>(!fmSec||r.sector_label===fmSec)
+      && (!q||r.ticker.toUpperCase().includes(q)||(r.name||'').toUpperCase().includes(q)))
+    .sort((a,b)=>{
+      const get1=r=>fmKey==='ticker'?r.ticker:fmKey==='sector_label'?r.sector_label
+        :fmKey==='coverage'?r.coverage:(r.values[fmKey]||{}).v;
+      const A=get1(a),B=get1(b);
+      if(A==null)return 1; if(B==null)return -1;
+      return (typeof A==='string'?A.localeCompare(B):(A>B?1:A<B?-1:0))*fmDir;});
+  const cell=(r,m)=>{
+    const x=r.values[m.metric];
+    if(!x||x.v==null) return `<td class="miss">·</td>`;
+    const v=m.fmt==='%'?pct(x.v,1):m.fmt==='$'?usd(x.v):m.fmt==='x'?fmt(x.v,2)+'×'
+      :m.fmt==='d'?fmt(x.v,0)+' d':fmt(x.v,2);
+    return `<td title="as of ${x.asof||'—'}">${v}</td>`;
+  };
+  const cats=[...new Set(d.rows.map(r=>r.sector_label))].sort();
+  $('#fmbody').innerHTML=`
+   <div class="row">
+    <input id="fmq" placeholder="Search name or ticker" value="${fmQ}" style="flex:1;min-width:150px">
+    <select id="fmsec">${['',...cats].map(v=>
+      `<option value="${v}"${v===fmSec?' selected':''}>${v||'All categories'}</option>`).join('')}</select>
+    <input id="fmadd" placeholder="Add ticker…" style="width:130px">
+    <span class="mut" style="font-size:11px">${rows.length} of ${d.rows.length}</span>
+   </div>
+   ${fmExtra.length?`<p class="mut" style="font-size:11px">Added, not held:
+     ${fmExtra.map(t=>`<span class="tick">${t} <a href="#" class="fmdel" data-t="${t}">×</a></span>`).join('')}
+     — these show data only if a fundamentals sync has covered them.</p>`:''}
+   <div class="wrap"><table class="dense"><thead><tr>
+     <th data-fk="ticker">Stock${fmKey==='ticker'?(fmDir<0?' ▾':' ▴'):''}</th>
+     <th data-fk="sector_label">Category${fmKey==='sector_label'?(fmDir<0?' ▾':' ▴'):''}</th>
+     <th data-fk="coverage">Cov${fmKey==='coverage'?(fmDir<0?' ▾':' ▴'):''}</th>
+     ${d.columns.map(m=>`<th data-fk="${m.metric}" title="${m.higher_better?'higher is better':'lower is better'} · ${m.n} stocks have it">`
+       +`${m.label}${fmKey===m.metric?(fmDir<0?' ▾':' ▴'):''}</th>`).join('')}
+   </tr></thead><tbody>${rows.map(r=>`<tr>
+     <td>${r.name?`<b class="fname" title="${r.ticker}">${r.name}</b>`:`<b>${r.ticker}</b>`}
+         ${r.held?'':'<span class="chip">not held</span>'}</td>
+     <td class="mut">${r.sector_label}</td>
+     <td class="mut">${pct(r.coverage,0)}</td>
+     ${d.columns.map(m=>cell(r,m)).join('')}</tr>`).join('')}
+   </tbody></table></div>
+   <p class="mut" style="font-size:11px;margin-top:8px">Columns are ordered by how many
+    stocks carry them. A dot means the metric does not apply to that sector or has not been
+    synced — P/E is omitted for REITs and MLPs, P/B leads for banks. Hover a value for its
+    as-of date.</p>`;
+  $('#fmq').oninput=e=>{fmQ=e.target.value; setPref('fmQ',fmQ); fundMatrix().then(()=>{
+    const i=$('#fmq'); i.focus(); i.setSelectionRange(i.value.length,i.value.length);});};
+  $('#fmsec').onchange=e=>{fmSec=e.target.value; setPref('fmSec',fmSec); fundMatrix();};
+  $('#fmadd').onkeydown=e=>{
+    if(e.key!=='Enter') return;
+    const t=e.target.value.trim().toUpperCase();
+    if(t && !fmExtra.includes(t)){ fmExtra=[...fmExtra,t]; setPref('fmExtra',fmExtra); }
+    fundMatrix();
+  };
+  $('#fmbody').querySelector('thead').onclick=e=>{
+    const k=e.target.closest('th')?.dataset.fk; if(!k)return;
+    if(k===fmKey)fmDir*=-1; else{fmKey=k; fmDir=(k==='ticker'||k==='sector_label')?1:-1;}
+    setPref('fmKey',fmKey); setPref('fmDir',fmDir); fundMatrix();};
+  $('#fmbody').onclick=e=>{
+    const a=e.target.closest('.fmdel'); if(!a)return;
+    e.preventDefault(); fmExtra=fmExtra.filter(x=>x!==a.dataset.t);
+    setPref('fmExtra',fmExtra); fundMatrix();};
+}
+
 async function fund(){
+  if(fundView==='matrix'){
+    $('#main').innerHTML=`<div class="card full"><h2>Fundamentals
+      <span class="seg" style="float:right" id="fview">
+        <button data-v="compare">Compare</button>
+        <button data-v="matrix" aria-pressed="true">All stocks</button></span></h2>
+      <div id="fmbody"></div></div>`;
+    $('#fview').onclick=e=>{const v=e.target.dataset.v; if(!v||v===fundView)return;
+      fundView=v; setPref('fundView',v); fund();};
+    return fundMatrix();
+  }
+  return fundCompare();
+}
+
+async function fundCompare(){
   const eligible=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto'&&!['mf','sgb','bond'].includes(r.asset))
     .sort((a,b)=>b.market_value-a.market_value);
   if(!eligible.length){ $('#main').innerHTML=`<div class="card"><h2>No holdings yet</h2>
@@ -856,7 +946,10 @@ async function fund(){
     return vs.every(v=>v===vs[0])?null:vs.indexOf(t); };
 
   $('#main').innerHTML=`<div class="card">
-   <h2>Fundamentals</h2>
+   <h2>Fundamentals
+    <span class="seg" style="float:right" id="fview">
+      <button data-v="compare" aria-pressed="true">Compare</button>
+      <button data-v="matrix">All stocks</button></span></h2>
    <div class="row"><span class="lbl">Compare</span>
      ${sel('tsel',tick)}${sel('tsel2',STATE.fundT2||'')}${sel('tsel3',STATE.fundT3||'')}
      <span class="mut" style="font-size:11px">pick up to three</span></div>
@@ -878,6 +971,8 @@ async function fund(){
    ${fs.some(f=>f.coverage<1)?`<p class="mut" style="margin-top:12px">Missing metrics need a
      fundamentals sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>
    <div id="rep"></div>`;
+  $('#fview').onclick=e=>{const v=e.target.dataset.v; if(!v||v===fundView)return;
+    fundView=v; setPref('fundView',v); fund();};
   $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;go('fund',e.target.value);};
   $('#tsel2').onchange=e=>{STATE.fundT2=e.target.value;setPref('fundT2',STATE.fundT2);fund();};
   $('#tsel3').onchange=e=>{STATE.fundT3=e.target.value;setPref('fundT3',STATE.fundT3);fund();};

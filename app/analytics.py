@@ -561,6 +561,49 @@ def fundamentals(c, ticker):
             "metrics": out,
             "coverage": sum(1 for m in out if not m["missing"]) / max(len(out), 1)}
 
+def fundamentals_matrix(c, market=None, extra=None):
+    """Every stock down the page, every metric across it.
+
+    Built by running the single-ticker view over each holding rather than querying the
+    table directly, so derived metrics and the sector-specific labels stay identical
+    between the two views — they would drift apart within a week otherwise.
+
+    Metric sets differ by sector, so the union is sparse on purpose: a bank has no P/E
+    column to fill and a REIT has no P/B. Columns are ordered by how many stocks actually
+    carry them, which puts the comparable ones first.
+    """
+    br = _brokers(market)
+    held = [r["ticker"] for r in c.execute(
+        "SELECT ticker FROM positions WHERE quantity>0" + _ba(br) + " ORDER BY ticker", br)]
+    assets = asset_types(c, market)
+    tickers = [t for t in held
+               if assets.get(t, "equity") == "equity" and S.sector_of(t) != "crypto"]
+    for t in (extra or []):
+        t = t.strip().upper()
+        if t and t not in tickers:
+            tickers.append(t)
+
+    rows, seen = [], collections.Counter()
+    meta = {}
+    for t in tickers:
+        f = fundamentals(c, t)
+        vals = {}
+        for m in f["metrics"]:
+            meta.setdefault(m["metric"], {"metric": m["metric"], "label": m["label"],
+                                          "fmt": m["fmt"],
+                                          "higher_better": m["higher_better"]})
+            if not m["missing"]:
+                seen[m["metric"]] += 1
+            vals[m["metric"]] = {"v": m["value"], "asof": m["asof"]}
+        rows.append({"ticker": t, "name": f["name"], "sector": f["sector"],
+                     "sector_label": f["sector_label"], "coverage": f["coverage"],
+                     "held": t in held, "values": vals})
+    cols = sorted(meta.values(), key=lambda m: (-seen[m["metric"]], m["label"]))
+    for cmeta in cols:
+        cmeta["n"] = seen[cmeta["metric"]]
+    return {"columns": cols, "rows": rows, "n_held": len(held)}
+
+
 def costs(c):
     rows = [dict(r) for r in c.execute(
         "SELECT * FROM token_ledger ORDER BY id DESC LIMIT 200")]

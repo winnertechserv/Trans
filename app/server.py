@@ -62,6 +62,9 @@ class H(BaseHTTPRequestHandler):
             if p.startswith("/api/trades/"):
                 return self._json(A.trades(c, urllib.parse.unquote(p.rsplit("/", 1)[1]),
                                            market=mk))
+            if p == "/api/fundamentals":
+                ex = [x for x in (q.get("extra", [""])[0] or "").split(",") if x.strip()]
+                return self._json(A.fundamentals_matrix(c, market=mk, extra=ex))
             if p.startswith("/api/fundamentals/"):
                 return self._json(A.fundamentals(c, p.rsplit("/", 1)[1].upper()))
             if p == "/api/sync/prompt":
