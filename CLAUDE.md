@@ -50,6 +50,11 @@ funds match on ISIN; Paytm funds carry none, so the scheme name must reduce to e
 Direct/Growth scheme or it is skipped and reported. Report which funds moved and by how
 much. `--dry-run` writes nothing.
 
+**"infer splits" / "fix splits"** — `python3 app/splits.py` proposes ratios for holdings
+whose sales exceed their purchases, validated against the broker's own share count and
+average cost. Show what it found, including the ambiguous and unexplained ones, and get
+confirmation before running `--write`. A wrong ratio silently rewrites realised profit.
+
 **"backup"** — `python3 app/backup.py snapshot manual` (or POST /api/backup). Only the
 database file is copied; code lives in git, not Drive. Snapshots go to
 `<drive root>/trans`, auto-detected on macOS and Linux. Report the filename and

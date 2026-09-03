@@ -173,6 +173,36 @@ quantities drift and some tickers appear to sell more than they ever bought. Thi
 broker's current share count. It does mean derived share counts are marked unreliable —
 `Held` shows `~` and the elapsed span instead of true holding days.
 
+### 3a. Splits can be worked out, where the evidence allows
+
+A skipped holding is a holding missing from booked profit, so it is worth recovering the
+ones that can be recovered.
+
+```bash
+python3 app/splits.py            # propose ratios, write nothing
+python3 app/splits.py --write    # record the unambiguous ones in config.json
+```
+
+A split leaves fingerprints, and the tool solves for the only ratio that fits all of
+them: after adjusting, FIFO never runs short; the final share count equals what the
+broker reports; and the remaining shares' average cost matches the broker's own average.
+That last check is what makes it trustworthy — the broker's average is computed
+independently of anything here, so a wrong ratio has to agree with a number it never saw.
+
+Ambiguous cases are listed and left alone. So are holdings that no single ratio explains,
+which usually means two corporate actions or a merger with an odd conversion. Nothing is
+written without `--write`, and even then only where exactly one ratio fits, because a
+wrong ratio silently rewrites realised profit and — unlike a missing figure — does not
+announce itself.
+
+Confirmed splits live in `config.json` and can be edited or removed by hand:
+
+```json
+"splits": { "RELIANCE": [{"date": "2025-03-06", "ratio": 2}] }
+```
+
+Removing an entry puts the holding back to being skipped, which is the safe state.
+
 ### 4. Demerged shares arrive with no cost
 
 A demerger should split the parent's cost basis between parent and children. Zerodha

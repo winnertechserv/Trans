@@ -401,8 +401,12 @@ def trades(c, ticker, market=None):
     rows = list(c.execute(
         "SELECT date,type,quantity,price,amount,fees,broker,asset FROM transactions"
         " WHERE ticker=?" + _ba(br) + " ORDER BY date,id", (ticker, *br)))
+    sp = CFG.splits().get(ticker.upper(), [])
+    applied = [0]
     lots, out = [], []
     for r in rows:
+        if sp:
+            _apply_splits(lots, sp, r["date"], applied, qi=1, pi=2)   # [date, qty, price]
         q = r["quantity"] or 0.0
         px = r["price"] or 0.0
         rec = {"date": r["date"], "type": r["type"], "quantity": q, "price": px,
@@ -429,6 +433,8 @@ def trades(c, ticker, market=None):
             rec["realized"] = round(q * px - cost, 2) if need <= 1e-9 else None
         out.append(rec)
     qty = 0.0
+    if sp:                       # a split after the final trade still moves the count
+        _apply_splits(lots, sp, "9999-12-31", applied, qi=1, pi=2)
     for rec in out:
         if rec["type"] == "buy":
             qty += rec["quantity"]
@@ -528,6 +534,27 @@ def allocation(c, market=None):
 LONG_TERM_DAYS = 365
 
 
+def _apply_splits(lots, splits, upto, applied, qi=0, pi=1):
+    # qi/pi say where quantity and price sit in a lot, because the two FIFO walks in this
+    # file store lots in different orders. Worth collapsing one day; parameterised here
+    # rather than silently assuming, which is how this first went wrong.
+    """Multiply held lots by any confirmed split falling on or before `upto`.
+
+    A split changes the share count without a transaction, so FIFO has nothing to match
+    a later sale against and drops the holding entirely. Applying the ratio to the lots
+    already open — and dividing their price by it, since the money paid did not change —
+    puts the counts back in step. Confirmed ratios only: see app/splits.py, which proposes
+    but never writes on its own.
+    """
+    while applied[0] < len(splits) and splits[applied[0]]["date"] <= upto:
+        f = splits[applied[0]]["ratio"]
+        for lot in lots:
+            lot[qi] *= f
+            lot[pi] /= f
+        applied[0] += 1
+    return lots
+
+
 def _round_parts(v):
     """Round a bucket for the wire, keeping realised equal to its two halves."""
     rs, rl = round(v["realized_short"], 2), round(v["realized_long"], 2)
@@ -558,9 +585,17 @@ def contributions(c, market=None):
 
     # First pass: which tickers cannot be matched at all. Done up front so a ticker that
     # breaks in 2024 does not contribute a figure for 2021 that is then withdrawn.
+    all_splits = CFG.splits()
     broken, held = set(), collections.defaultdict(list)
+    seen_sp = collections.defaultdict(lambda: [0])
     for r in rows:
         t, q = r["ticker"], r["quantity"] or 0
+        sp = all_splits.get(t)
+        if sp:
+            while seen_sp[t][0] < len(sp) and sp[seen_sp[t][0]]["date"] <= r["date"]:
+                f = sp[seen_sp[t][0]]["ratio"]
+                held[t] = [x * f for x in held[t]]
+                seen_sp[t][0] += 1
         if r["type"] == "buy":
             held[t].append(q)
         else:
@@ -582,9 +617,12 @@ def contributions(c, market=None):
 
     by_m = collections.defaultdict(lambda: collections.defaultdict(_z))
     lots = collections.defaultdict(list)          # ticker -> [[qty, price, date]]
+    done = collections.defaultdict(lambda: [0])
     for r in rows:
         m, a = r["date"][:7], (r["asset"] or "equity")
         t, q, px = r["ticker"], r["quantity"] or 0, r["price"] or 0
+        if all_splits.get(t):
+            _apply_splits(lots[t], all_splits[t], r["date"], done[t])
         if r["type"] == "buy":
             by_m[m][a]["bought"] += q * px
             lots[t].append([q, px, r["date"]])

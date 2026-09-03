@@ -41,6 +41,24 @@ def demergers():
     """Optional {child: parent} overrides for demergers we do not ship."""
     return {str(k).upper(): str(v).upper()
             for k, v in (load().get("demergers") or {}).items()}
+def splits():
+    """{ticker: [{date, ratio}, ...]} — confirmed corporate actions that multiplied a
+    share count. Populated by `python3 app/splits.py`, which proposes and never writes
+    without confirmation."""
+    out = {}
+    for k, v in (load().get("splits") or {}).items():
+        events = v if isinstance(v, list) else [v]
+        clean = []
+        for e in events:
+            try:
+                clean.append({"date": str(e["date"])[:10], "ratio": float(e["ratio"])})
+            except (KeyError, TypeError, ValueError):
+                continue
+        if clean:
+            out[str(k).upper()] = sorted(clean, key=lambda e: e["date"])
+    return out
+
+
 def ticker_aliases():
     """Optional {old_symbol: new_symbol} overrides for renames we do not ship."""
     return {str(k).upper(): str(v).upper()
