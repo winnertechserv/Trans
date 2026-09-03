@@ -13,6 +13,12 @@ import config as CFG
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INBOX = os.path.join(ROOT, "sync", "inbox")
 ARCHIVE = os.path.join(ROOT, "sync", "archive")
+# Created here rather than relied upon from the checkout: git does not track empty
+# directories, so `sync/archive` exists in a clone only as long as a .gitkeep survives —
+# and one history rewrite removed it. Without this the first import inserts its rows and
+# then dies moving the file, which looks like a parsing failure and is not one.
+for _d in (INBOX, ARCHIVE):
+    os.makedirs(_d, exist_ok=True)
 
 def _fill_date(o):
     ex = o.get("executions") or []
