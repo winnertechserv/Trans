@@ -401,8 +401,12 @@ def trades(c, ticker, market=None):
     rows = list(c.execute(
         "SELECT date,type,quantity,price,amount,fees,broker,asset FROM transactions"
         " WHERE ticker=?" + _ba(br) + " ORDER BY date,id", (ticker, *br)))
+    sp = CFG.splits().get(ticker.upper(), [])
+    applied = [0]
     lots, out = [], []
     for r in rows:
+        if sp:
+            _apply_splits(lots, sp, r["date"], applied, qi=1, pi=2)   # [date, qty, price]
         q = r["quantity"] or 0.0
         px = r["price"] or 0.0
         rec = {"date": r["date"], "type": r["type"], "quantity": q, "price": px,
@@ -429,6 +433,8 @@ def trades(c, ticker, market=None):
             rec["realized"] = round(q * px - cost, 2) if need <= 1e-9 else None
         out.append(rec)
     qty = 0.0
+    if sp:                       # a split after the final trade still moves the count
+        _apply_splits(lots, sp, "9999-12-31", applied, qi=1, pi=2)
     for rec in out:
         if rec["type"] == "buy":
             qty += rec["quantity"]
@@ -520,19 +526,56 @@ def allocation(c, market=None):
                "tickers": [r["ticker"] for r in tail]},
     }
 
+# Twelve months is the line between short and long term for listed equity in both
+# markets this app covers. It is not universal: Indian debt funds, gold bonds and unlisted
+# holdings each follow their own rule, and the US has its own exceptions. The split here
+# is "held more than a year", which is the right question to ask of a stock and a starting
+# point rather than an answer for anything else.
+LONG_TERM_DAYS = 365
+
+
+def _apply_splits(lots, splits, upto, applied, qi=0, pi=1):
+    # qi/pi say where quantity and price sit in a lot, because the two FIFO walks in this
+    # file store lots in different orders. Worth collapsing one day; parameterised here
+    # rather than silently assuming, which is how this first went wrong.
+    """Multiply held lots by any confirmed split falling on or before `upto`.
+
+    A split changes the share count without a transaction, so FIFO has nothing to match
+    a later sale against and drops the holding entirely. Applying the ratio to the lots
+    already open — and dividing their price by it, since the money paid did not change —
+    puts the counts back in step. Confirmed ratios only: see app/splits.py, which proposes
+    but never writes on its own.
+    """
+    while applied[0] < len(splits) and splits[applied[0]]["date"] <= upto:
+        f = splits[applied[0]]["ratio"]
+        for lot in lots:
+            lot[qi] *= f
+            lot[pi] /= f
+        applied[0] += 1
+    return lots
+
+
+def _round_parts(v):
+    """Round a bucket for the wire, keeping realised equal to its two halves."""
+    rs, rl = round(v["realized_short"], 2), round(v["realized_long"], 2)
+    return {"bought": round(v["bought"], 2), "sold": round(v["sold"], 2),
+            "realized": round(rs + rl, 2), "realized_short": rs, "realized_long": rl}
+
+
 def contributions(c, market=None):
-    """Bought, sold and booked P/L per month.
+    """Bought, sold and booked P/L per month, split by holding period.
 
-    Realised P/L uses weighted-average cost walked forward over the order stream: on a
-    sale, profit is proceeds less the running average cost of the shares going out. That
-    is the standard method and it is exact wherever the stream is complete.
+    Booked P/L is matched FIFO — the oldest shares are sold first. That is a change from
+    the weighted-average basis this used to use, and the reason is that an average has no
+    holding period: it collapses every purchase into one number, so there is no lot to ask
+    "how long was this held" of. FIFO is also what Indian equity taxation mandates and
+    what the trade log already shows, so the two now agree instead of quietly differing.
 
-    It is NOT computed for tickers that sell more shares than they appear to own, which
-    is what a split looks like in order history — the per-share average there is
-    meaningless and would invent a loss. Those tickers still contribute to Bought and
-    Sold, so the Booked column deliberately sums to less than the headline realised
-    figure, and the caller is told how many were skipped rather than the gap being
-    silent.
+    A ticker that sells more shares than it ever bought is skipped entirely. That is what
+    a split looks like in order history, and matching a sale against lots that do not
+    exist would invent both a loss and a holding period. Those tickers still count in
+    Bought and Sold, so the booked columns deliberately total less than the headline
+    figure, and the caller is told how many were skipped rather than the gap being silent.
     """
     br = _brokers(market)
     rows = list(c.execute(
@@ -540,56 +583,94 @@ def contributions(c, market=None):
         " WHERE type IN ('buy','sell')" + _ba(br)
         + " ORDER BY date,id", br))
 
-    broken = set()
-    run = collections.defaultdict(lambda: [0.0, 0.0])
-    for r in rows:                                   # first pass: find the unusable ones
-        st = run[r["ticker"]]
-        q = r["quantity"] or 0
+    # First pass: which tickers cannot be matched at all. Done up front so a ticker that
+    # breaks in 2024 does not contribute a figure for 2021 that is then withdrawn.
+    all_splits = CFG.splits()
+    broken, held = set(), collections.defaultdict(list)
+    seen_sp = collections.defaultdict(lambda: [0])
+    for r in rows:
+        t, q = r["ticker"], r["quantity"] or 0
+        sp = all_splits.get(t)
+        if sp:
+            while seen_sp[t][0] < len(sp) and sp[seen_sp[t][0]]["date"] <= r["date"]:
+                f = sp[seen_sp[t][0]]["ratio"]
+                held[t] = [x * f for x in held[t]]
+                seen_sp[t][0] += 1
         if r["type"] == "buy":
-            st[0] += q; st[1] += q * (r["price"] or 0)
-        elif q > st[0] + 1e-9:
-            broken.add(r["ticker"]); st[0] = 0.0; st[1] = 0.0
+            held[t].append(q)
         else:
-            avg = st[1] / st[0] if st[0] else 0.0
-            st[0] -= q; st[1] -= q * avg
+            if q > sum(held[t]) + 1e-9:
+                broken.add(t)
+                held[t] = []
+                continue
+            need = q
+            while need > 1e-9 and held[t]:
+                take = min(need, held[t][0])
+                held[t][0] -= take
+                need -= take
+                if held[t][0] <= 1e-9:
+                    held[t].pop(0)
 
     def _z():
-        return {"bought": 0.0, "sold": 0.0, "realized": 0.0}
+        return {"bought": 0.0, "sold": 0.0, "realized": 0.0,
+                "realized_short": 0.0, "realized_long": 0.0}
+
     by_m = collections.defaultdict(lambda: collections.defaultdict(_z))
-    run = collections.defaultdict(lambda: [0.0, 0.0])
+    lots = collections.defaultdict(list)          # ticker -> [[qty, price, date]]
+    done = collections.defaultdict(lambda: [0])
     for r in rows:
-        m = r["date"][:7]
-        a = r["asset"] or "equity"
-        q, px = r["quantity"] or 0, r["price"] or 0
-        st = run[r["ticker"]]
+        m, a = r["date"][:7], (r["asset"] or "equity")
+        t, q, px = r["ticker"], r["quantity"] or 0, r["price"] or 0
+        if all_splits.get(t):
+            _apply_splits(lots[t], all_splits[t], r["date"], done[t])
         if r["type"] == "buy":
             by_m[m][a]["bought"] += q * px
-            st[0] += q; st[1] += q * px
-        else:
-            by_m[m][a]["sold"] += q * px
-            if r["ticker"] not in broken and q <= st[0] + 1e-9:
-                avg = st[1] / st[0] if st[0] else 0.0
-                by_m[m][a]["realized"] += q * px - q * avg
-                st[0] -= q; st[1] -= q * avg
+            lots[t].append([q, px, r["date"]])
+            continue
 
-    # Broken out by asset because a total hides whichever half you stopped trading:
-    # all but Rs500 of this portfolio's mutual fund activity predates the default
-    # two-year window, so it looked absent from a figure it was fully inside.
+        by_m[m][a]["sold"] += q * px
+        if t in broken:
+            continue
+        sold_on = dt.date.fromisoformat(r["date"])
+        need = q
+        while need > 1e-9 and lots[t]:
+            lot = lots[t][0]
+            take = min(need, lot[0])
+            gain = take * (px - lot[1])
+            days = (sold_on - dt.date.fromisoformat(lot[2])).days
+            by_m[m][a]["realized"] += gain
+            by_m[m][a]["realized_long" if days > LONG_TERM_DAYS
+                       else "realized_short"] += gain
+            lot[0] -= take
+            need -= take
+            if lot[0] <= 1e-9:
+                lots[t].pop(0)
+
+    # Broken out by asset because a total hides whichever half you stopped trading: nearly
+    # all of this portfolio's mutual fund activity predates the default two-year window,
+    # so it looked absent from a figure it was fully inside.
     ser = []
     for k, per in sorted(by_m.items()):
         tot = _z()
         for a in per.values():
             for f in tot:
                 tot[f] += a[f]
+        # The total is the sum of the two halves, not a separately rounded third figure.
+        # Rounding all three independently let a paisa of drift accumulate, so a reader
+        # adding the columns by hand found them not to tie.
+        rs, rl = round(tot["realized_short"], 2), round(tot["realized_long"], 2)
         ser.append({"month": k, "amount": round(tot["bought"], 2),
                     "bought": round(tot["bought"], 2), "sold": round(tot["sold"], 2),
-                    "realized": round(tot["realized"], 2),
-                    "by_asset": {a: {f: round(v[f], 2) for f in v} for a, v in per.items()}})
+                    "realized": round(rs + rl, 2),
+                    "realized_short": rs, "realized_long": rl,
+                    "by_asset": {a: _round_parts(v) for a, v in per.items()}})
     last12 = sum(x["bought"] for x in ser[-12:])
     seen = sorted({a for x in ser for a in x["by_asset"]})
     return {"series": ser, "trailing_12m": round(last12, 2), "run_rate": round(last12, 2),
             "realized_total": round(sum(x["realized"] for x in ser), 2),
-            "realized_skipped": sorted(broken), "assets": seen}
+            "realized_skipped": sorted(broken), "assets": seen,
+            "long_term_days": LONG_TERM_DAYS}
+
 
 def fundamentals(c, ticker):
     sec = S.sector_of(ticker)
