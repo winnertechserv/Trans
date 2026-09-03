@@ -212,7 +212,7 @@ def results(c, as_of=None, market=None):
     # realised = sold - (invested - still held). The two halves plus dividends reconstruct
     # net profit exactly, which is the check that this is not double counting.
     held_cost = sum(v for v in basis.values() if v is not None)
-    xirr_open, open_note = _xirr_open(c, market, as_of or dt.date.today())
+    scoped = _xirr_scoped(c, market, as_of or dt.date.today())
 
     inv_t = overall.invested + overall_extra[0]
     val_t = overall.market_value + overall_extra[1]
@@ -224,8 +224,7 @@ def results(c, as_of=None, market=None):
           "cost_basis": held_cost,                 # what the shares still held cost
           "unrealized": val_t - held_cost,         # paper gain on those
           "realized": realized_t,                  # booked, from everything sold
-          "xirr_open": xirr_open, "xirr_open_note": open_note,
-          "no_basis": no_basis, "unreconciled": sorted(short),
+          "no_basis": no_basis, "unreconciled": sorted(short), **scoped,
           "simple_return": (net_t / inv_t) if inv_t else None,
           "holdings_only": overall_extra[0] > 0 and overall.n_flows == 0,
           "first": overall.first_activity.isoformat() if overall.first_activity else None,
@@ -265,25 +264,43 @@ def _unreconciled(c, market):
     return out
 
 
-def _xirr_open(c, market, as_of):
-    """XIRR over positions still held — the rate on money actually still in the market.
+def _xirr_scoped(c, market, as_of):
+    """The same flows, four ways.
 
-    Closed round-trips are excluded entirely, which is the point: the headline XIRR is
-    dominated by whatever was traded years ago, and it answers a different question from
-    "how are the things I own doing".
+    One headline rate answers a question nobody asks. Splitting it says which part of the
+    portfolio the number comes from: what is still held, what has been closed, everything
+    together, and just the last year.
+
+    Each slice is a real XIRR over that subset's own flows — never a blend of separate
+    rates, which would mean nothing. The one-year slice takes positions OPENED in the last
+    365 days, closed or still held, rather than every flow falling in the window:
+    including a sale whose purchase sits outside it would count proceeds with none of the
+    cost and read as a spectacular year.
     """
-    br = _brokers(market)
-    open_t = {r["ticker"] for r in c.execute(
-        "SELECT ticker FROM positions WHERE quantity>0" + _ba(br),
-        br)}
-    if not open_t:
-        return None, "no open positions"
-    txns = [t for t in _txns(c, market) if t.ticker in open_t]
+    txns = _txns(c, market)
+    pos = _positions(c, market)
     if not txns:
-        return None, "open positions have no transaction history"
-    per, ov = P.analyse(txns, _positions(c, market), as_of=as_of)
-    return ov.xirr, ov.note
+        return {}
+    per, _ov = P.analyse(txns, pos, as_of=as_of)
+    open_t = {t.ticker for t in per if t.market_value > 0}
+    closed_t = {t.ticker for t in per if t.market_value <= 0}
+    cutoff = as_of - dt.timedelta(days=365)
+    recent = {t.ticker for t in per if t.first_activity and t.first_activity >= cutoff}
 
+    def rate(keep, empty):
+        sub = [x for x in txns if x.ticker in keep]
+        if not sub:
+            return None, empty
+        _, o = P.analyse(sub, {k: v for k, v in pos.items() if k in keep}, as_of=as_of)
+        return o.xirr, o.note
+
+    o_r, o_n = rate(open_t, "nothing currently held")
+    c_r, c_n = rate(closed_t, "nothing sold yet")
+    y_r, y_n = rate(recent, "no position opened in the last year")
+    return {"xirr_open": o_r, "xirr_open_note": o_n,
+            "xirr_closed": c_r, "xirr_closed_note": c_n,
+            "xirr_1y": y_r, "xirr_1y_note": y_n,
+            "n_open": len(open_t), "n_closed": len(closed_t), "n_1y": len(recent)}
 
 def daily_buys(c, days=30, market=None):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()

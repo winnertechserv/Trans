@@ -271,16 +271,29 @@ async function loadMarket(){
     ['Dividends',usd(o.dividends,2),
      'US: reconstructed from DRIP reinvestment orders, so cash dividends are invisible. '
      +'India: 0 because the Zerodha tradebook carries no dividend rows.'],
-    ['XIRR on unrealized',px(o.xirr_open),
-     'Annualised money-weighted return counting only positions you still hold — how the '
-     +'things you own are doing, with closed round-trips excluded.'],
+    // Four slices of the same flows. Each is a real XIRR over its own subset, never an
+    // average of the others — which is why they do not add up to the net figure and are
+    // not meant to.
+    ['Unrealized XIRR',px(o.xirr_open),
+     `Only what you still hold — ${o.n_open||0} position${o.n_open===1?'':'s'}, valued at `
+     +`today's price as a final inflow. Closed round-trips are excluded, so this is how `
+     +`the things you own are actually doing.`],
+    ['Realized XIRR',px(o.xirr_closed),
+     `Only positions you have fully sold — ${o.n_closed||0} of them. What the money you `
+     +`took back out actually earned while it was deployed.`],
     ['Net XIRR',px(o.xirr),
-     'Annualised money-weighted return over everything ever traded, closed positions '
-     +'included. Short round-trips distort it upward because the rate is annualised.'],
+     'Every trade ever made, open and closed together. The headline, and the one most '
+     +'dragged around by short round-trips, because the rate is annualised.'],
+    ['XIRR 1Y',px(o.xirr_1y),
+     `Positions OPENED in the last 365 days — ${o.n_1y||0} of them, whether since sold or `
+     +`still held. Counted that way rather than by every flow landing in the window, `
+     +`because a sale whose purchase predates it would bring proceeds with none of the `
+     +`cost and read as a spectacular year.`],
     ['Data through',h.last_transaction_date
       ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
       : 'holdings only', null, 'date']
-  ].map(([s,v,t,cls])=>`<div class="kpi${cls?' '+cls:''}"${t?` title="${t}"`:''}>`
+  ].map(([s,v,t,cls])=>`<div class="kpi${cls?' '+cls:''}"`
+      +`${t?` title="${String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"`:''}>`
       +`<span>${s}</span><b>${v}</b></div>`).join('');
   [...$('#mkt').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===STATE.market));
 }
