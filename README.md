@@ -311,6 +311,7 @@ In Claude Code, in this folder:
 | `accounts` | shows your broker account numbers |
 | `classify tickers` | maps unclassified holdings to sectors |
 | `bootstrap` | rebuilds the database from scratch |
+| `refresh navs` | marks mutual funds at today's NAV from AMFI |
 
 To import files instead, drop them in `sync/inbox/` and run `python3 app/ingest.py inbox`.
 Re-importing is always safe — every importer deduplicates, so overlapping exports and

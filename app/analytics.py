@@ -36,10 +36,63 @@ def _txns(c, market=None):
     return out
 
 def _positions(c, market=None):
+    """Positions marked at the best price available.
+
+    The broker's price is whatever it reported at the last sync. `quotes` can hold
+    something newer — AMFI publishes fund NAVs daily, and a fund held at Paytm has no
+    broker price at all, only the NAV of its last transaction. A quote is used only when
+    it is dated later than the position snapshot, so a stale quote can never override a
+    fresh broker price.
+    """
     br = _brokers(market)
-    q = "SELECT ticker,quantity,price FROM positions" + _bw(br)
-    return {r["ticker"]: Position(r["ticker"], r["quantity"], r["price"])
-            for r in c.execute(q, br)}
+    latest = {}
+    for r in c.execute(
+            "SELECT q.ticker, q.date, q.price FROM quotes q"
+            " JOIN (SELECT ticker, MAX(date) d FROM quotes GROUP BY ticker) m"
+            "   ON m.ticker = q.ticker AND m.d = q.date"):
+        if r["price"]:
+            latest[r["ticker"]] = (r["date"], r["price"])
+
+    out = {}
+    for r in c.execute("SELECT ticker,quantity,price,asof FROM positions" + _bw(br), br):
+        price = r["price"]
+        q = latest.get(r["ticker"])
+        if q and r["asof"] and q[0] > r["asof"]:
+            price = q[1]
+        out[r["ticker"]] = Position(r["ticker"], r["quantity"], price)
+    return out
+
+
+def price_asof(c, market=None):
+    """How old the marks are, per asset class, worst first.
+
+    Reported as the OLDEST effective price date in each group, not the newest: one fund
+    priced today does not make the fund holdings current, and averaging would hide the
+    month-old NAV that is the only figure worth warning about.
+
+    A position's effective date is its broker snapshot, or a later quote if one exists —
+    matching how _positions() actually marks it.
+    """
+    br = _brokers(market)
+    latest = {r["ticker"]: r["d"] for r in
+              c.execute("SELECT ticker, MAX(date) d FROM quotes GROUP BY ticker")}
+    groups = collections.defaultdict(list)
+    for r in c.execute("SELECT ticker,asset,asof FROM positions" + _bw(br), br):
+        eff = r["asof"]
+        q = latest.get(r["ticker"])
+        if q and eff and q > eff:
+            eff = q
+        if eff:
+            groups[r["asset"] or "equity"].append(eff)
+
+    today = dt.date.today()
+    out = []
+    for asset, dates in groups.items():
+        oldest, newest = min(dates), max(dates)
+        out.append({"asset": asset, "n": len(dates), "oldest": oldest, "newest": newest,
+                    "days": (today - dt.date.fromisoformat(oldest)).days})
+    out.sort(key=lambda x: -x["days"])
+    return out
 
 def cost_basis(c, market=None):
     """{ticker: cost of the shares still held}, plus the tickers where it is a guess.
@@ -167,6 +220,7 @@ def results(c, as_of=None, market=None):
     # Fall back to the broker's own average cost so value and P/L are still real; XIRR
     # genuinely cannot be computed without dated flows, and says so rather than showing 0.
     seen = {r["ticker"] for r in rows}
+    marks = _positions(c, market)          # one source of truth for what a share is worth
     br = _brokers(market)
     # Once a tradebook is loaded, "import a tradebook" stops being the right explanation.
     # What is left are holdings the equity tradebook structurally cannot contain: bonds
@@ -180,7 +234,12 @@ def results(c, as_of=None, market=None):
             continue
         inv = 0.0 if M.demerged_from(p["ticker"], CFG.demergers()) \
               else (p["avg_cost"] or 0) * p["quantity"]
-        val = (p["price"] or 0) * p["quantity"]
+        # Mark through the same path as everything else. This branch used to read
+        # positions.price directly, so a holding with no transactions — which is every
+        # mutual fund — silently ignored a fresher quote while the rest of the portfolio
+        # used it. Two pricing paths is one too many.
+        marked = marks.get(p["ticker"])
+        val = (marked.price if marked else (p["price"] or 0)) * p["quantity"]
         rows.append({
             "ticker": p["ticker"], "xirr": None,
             "note": _no_history_note(p["asset"], has_txns),
@@ -623,7 +682,10 @@ def health(c, market=None):
     maxd = c.execute("SELECT MAX(date) d FROM transactions"
                      + _bw(br), br).fetchone()["d"]
     stale = (dt.date.today() - dt.date.fromisoformat(maxd)).days if maxd else None
+    pa = price_asof(c, market)
+    worst = max((x["days"] for x in pa if x["days"] is not None), default=None)
     return {"last_transaction_date": maxd, "days_stale": stale, "runs": runs,
+            "prices": pa, "price_days_stale": worst,
             "n_transactions": c.execute("SELECT COUNT(*) n FROM transactions"
                 + _bw(br), br).fetchone()["n"],
             "n_positions": c.execute("SELECT COUNT(*) n FROM positions"
