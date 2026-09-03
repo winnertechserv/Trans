@@ -2,6 +2,10 @@
 portfolio.db
 portfolio.db-wal
 portfolio.db-shm
+# SQLite sidecars anywhere. They appear merely from reading a database in WAL mode, so
+# even the shipped demo grows them the first time anyone opens it.
+*.db-wal
+*.db-shm
 portfolio.db.pre-restore
 config.json
 # Everything dropped in or archived by a sync is raw broker data: tradebook CSVs

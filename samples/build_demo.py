@@ -130,6 +130,10 @@ def main():
     c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('demo','1')")
     c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('demo_built',?)", (today,))
     c.commit()
+    # Ship it in rollback-journal mode, not WAL. A WAL database grows -wal and -shm
+    # sidecars the moment anyone reads it, which would litter a clean checkout with
+    # untracked files the leak guard then refuses. The live database still uses WAL.
+    c.execute("PRAGMA journal_mode=DELETE")
     n_t = c.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
     n_p = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
     c.close()
