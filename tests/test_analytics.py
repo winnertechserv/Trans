@@ -231,3 +231,86 @@ class TradeLog(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShortAndLongTerm(unittest.TestCase):
+    """Booked P/L split by holding period.
+
+    This needed FIFO rather than weighted-average cost: an average collapses every
+    purchase into one number, so there is no lot left to ask "how long was this held" of.
+    """
+
+    def test_a_holding_over_a_year_is_long_term(self):
+        with TempDB() as db:
+            db.buy("A", ago(500), 10, 100.0)
+            db.sell("A", ago(10), 10, 150.0)
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            self.assertAlmostEqual(sum(x["realized_long"] for x in d["series"]), 500.0)
+            self.assertAlmostEqual(sum(x["realized_short"] for x in d["series"]), 0.0)
+
+    def test_a_holding_under_a_year_is_short_term(self):
+        with TempDB() as db:
+            db.buy("A", ago(200), 10, 100.0)
+            db.sell("A", ago(10), 10, 150.0)
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            self.assertAlmostEqual(sum(x["realized_short"] for x in d["series"]), 500.0)
+            self.assertAlmostEqual(sum(x["realized_long"] for x in d["series"]), 0.0)
+
+    def test_one_sale_can_be_both(self):
+        # FIFO takes the old lot first, so a single sale splits across both columns.
+        with TempDB() as db:
+            db.buy("A", ago(500), 10, 100.0)     # long
+            db.buy("A", ago(100), 10, 120.0)     # short
+            db.sell("A", ago(5), 20, 150.0)
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            self.assertAlmostEqual(sum(x["realized_long"] for x in d["series"]), 500.0)
+            self.assertAlmostEqual(sum(x["realized_short"] for x in d["series"]), 300.0)
+
+    def test_fifo_sells_the_oldest_shares_first(self):
+        with TempDB() as db:
+            db.buy("A", ago(500), 10, 100.0)
+            db.buy("A", ago(100), 10, 200.0)
+            db.sell("A", ago(5), 10, 300.0)      # must consume the 100.0 lot
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            self.assertAlmostEqual(sum(x["realized_long"] for x in d["series"]), 2000.0)
+            self.assertAlmostEqual(sum(x["realized_short"] for x in d["series"]), 0.0)
+
+    def test_exactly_at_the_boundary_counts_as_short(self):
+        # "More than" twelve months, not "at least".
+        with TempDB() as db:
+            db.buy("A", ago(365), 10, 100.0)
+            db.sell("A", ago(0), 10, 150.0)
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            self.assertAlmostEqual(sum(x["realized_short"] for x in d["series"]), 500.0)
+
+    def test_short_plus_long_always_equals_the_total(self):
+        # Asserted on the rounded wire values, because rounding all three independently
+        # let a paisa of drift accumulate and the columns stopped tying by hand.
+        with TempDB() as db:
+            for i, days in enumerate((900, 700, 400, 200, 90, 30)):
+                db.buy("A", ago(days + 3), 3, 100.0 + i)
+                db.sell("A", ago(days), 3, 133.33 + i)
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            for x in d["series"]:
+                self.assertAlmostEqual(x["realized_short"] + x["realized_long"],
+                                       x["realized"], places=2, msg=x["month"])
+            tot_s = sum(x["realized_short"] for x in d["series"])
+            tot_l = sum(x["realized_long"] for x in d["series"])
+            tot_r = sum(x["realized"] for x in d["series"])
+            self.assertAlmostEqual(tot_s + tot_l, tot_r, places=2)
+
+    def test_a_split_broken_ticker_contributes_to_neither(self):
+        with TempDB() as db:
+            db.buy("A", ago(500), 50, 100.0)
+            db.sell("A", ago(10), 100, 60.0)      # more than ever bought
+            import analytics as A
+            d = A.contributions(db.conn, market="us")
+            self.assertIn("A", d["realized_skipped"])
+            self.assertAlmostEqual(sum(x["realized"] for x in d["series"]), 0.0)
+            self.assertGreater(sum(x["sold"] for x in d["series"]), 0)   # still in Sold

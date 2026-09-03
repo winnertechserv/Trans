@@ -778,10 +778,13 @@ function contribSeries(ser){
   const agg=new Map();
   for(const x of ser){ if(x.month<cut) continue;
     const k=contribBucket(x.month,contribPeriod);
-    const v=contribAsset==='all'?x:((x.by_asset||{})[contribAsset]||{bought:0,sold:0,realized:0});
+    const z={bought:0,sold:0,realized:0,realized_short:0,realized_long:0};
+    const v=contribAsset==='all'?x:((x.by_asset||{})[contribAsset]||z);
     if(contribAsset!=='all' && !v.bought && !v.sold && !v.realized) continue;
-    const a=agg.get(k)||{label:k,bought:0,sold:0,realized:0};
-    a.bought+=v.bought; a.sold+=v.sold; a.realized+=v.realized; agg.set(k,a); }
+    const a=agg.get(k)||{label:k,...z};
+    a.bought+=v.bought; a.sold+=v.sold; a.realized+=v.realized;
+    a.realized_short+=v.realized_short||0; a.realized_long+=v.realized_long||0;
+    agg.set(k,a); }
   return [...agg.values()].sort((a,b)=>a.label<b.label?-1:1);
 }
 function contribCard(cn){
@@ -790,7 +793,10 @@ function contribCard(cn){
   const cs=contribSeries(cn.series);
   const cm=Math.max(...cs.map(x=>x.bought),0)||1;
   const tot=cs.reduce((a,x)=>({bought:a.bought+x.bought,sold:a.sold+x.sold,
-    realized:a.realized+x.realized}),{bought:0,sold:0,realized:0});
+    realized:a.realized+x.realized,
+    realized_short:a.realized_short+(x.realized_short||0),
+    realized_long:a.realized_long+(x.realized_long||0)}),
+    {bought:0,sold:0,realized:0,realized_short:0,realized_long:0});
   const skip=(cn.realized_skipped||[]).length;
   const per=[['month','Monthly'],['quarter','Quarterly'],['year','Yearly']];
   const spans=[[1,'1y'],[3,'3y'],[5,'5y'],[10,'10y'],['all','All']];
@@ -816,20 +822,32 @@ function contribCard(cn){
        .map(([k,l])=>`<button data-v="${k}" aria-pressed="${k===contribAsset}">${l}</button>`).join('')}</span>`:''}
    </div>
    ${cs.length?`<div class="wrap"><table><thead><tr><th>Period</th><th></th>
-     <th>Bought</th><th>Sold</th><th>Net cash</th><th>Booked P/L</th></tr></thead>
+     <th>Bought</th><th>Sold</th><th>Net cash</th>
+     <th title="Booked on shares held ${Math.round((cn.long_term_days||365)/365*12)} months
+       or less">Booked ST</th>
+     <th title="Booked on shares held more than ${Math.round((cn.long_term_days||365)/365*12)}
+       months">Booked LT</th>
+     <th>Booked P/L</th></tr></thead>
     <tbody>${cs.map(x=>`<tr><td>${x.label}</td>
      <td style="width:34%"><div class="bar"><i style="width:${x.bought/cm*100}%"></i></div></td>
      <td>${usd(x.bought)}</td><td class="mut">${usd(x.sold)}</td>
      <td class="${sign(x.sold-x.bought)}">${usd(x.sold-x.bought)}</td>
+     <td class="${sign(x.realized_short)}">${x.realized_short?usd(x.realized_short):'—'}</td>
+     <td class="${sign(x.realized_long)}">${x.realized_long?usd(x.realized_long):'—'}</td>
      <td class="${sign(x.realized)}">${x.realized?usd(x.realized):'—'}</td></tr>`).join('')}
     </tbody><tfoot><tr><th>Total</th><th></th>
      <th>${usd(tot.bought)}</th><th class="mut">${usd(tot.sold)}</th>
      <th class="${sign(tot.sold-tot.bought)}">${usd(tot.sold-tot.bought)}</th>
+     <th class="${sign(tot.realized_short)}">${usd(tot.realized_short)}</th>
+     <th class="${sign(tot.realized_long)}">${usd(tot.realized_long)}</th>
      <th class="${sign(tot.realized)}">${usd(tot.realized)}</th></tr></tfoot></table></div>
     <p class="mut" style="font-size:11px;margin-top:8px">
      <b>Net cash</b> is sold minus bought — negative means you put money in that period.
-     <b>Booked P/L</b> is profit actually banked on the shares sold, using weighted-average
-     cost.${skip?` It skips ${skip} ticker${skip>1?'s':''} that sold more shares than the
+     <b>Booked ST</b> and <b>LT</b> split that by how long the shares were held — twelve
+     months is the line for listed equity in both markets, and <b>not</b> the rule for debt
+     funds, gold bonds or unlisted holdings, so treat it as a starting point and not a tax
+     figure. <b>Booked P/L</b> is profit actually banked on the shares sold, matched
+     first-in-first-out.${skip?` It skips ${skip} ticker${skip>1?'s':''} that sold more shares than the
      order history shows them buying — that is what a split looks like, and a per-share
      average there would invent a loss. Those sales still count in Sold, so this column
      totals less than the Booked P/L in the header.`:''}
