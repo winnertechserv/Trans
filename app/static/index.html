@@ -44,6 +44,11 @@ tbody tr:hover{background:var(--chip)}
 /* Marks a cell that is showing a simple return where an annual rate would mislead. */
 .smark{font-size:9px;font-weight:700;color:var(--mut);cursor:help;margin-left:2px;
   border-bottom:1px dotted var(--mut)}
+#tlog{max-width:min(820px,92vw);width:100%}
+.tr-sell td{background:color-mix(in srgb,var(--warn) 7%,transparent)}
+.tr-lot td{font-size:11px;padding-top:2px;padding-bottom:2px}
+.flowlink{color:var(--acc);text-decoration:none;border-bottom:1px dotted var(--acc)}
+.flowlink:hover{border-bottom-style:solid}
 .cname{font-size:11px;color:var(--mut);font-weight:400;margin-top:1px;max-width:240px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Bound the name itself rather than every first column in the app — report tables and
@@ -157,6 +162,7 @@ details[open]{padding-bottom:10px}
 <header><h1>Trans</h1><span class="seg" id="mkt"></span><div class="kpis" id="kpis"></div></header>
 <nav id="nav"></nav><main id="main">loading…</main>
 <dialog id="consent"></dialog>
+<dialog id="tlog"></dialog>
 <script>
 const $=s=>document.querySelector(s);
 let MKT={key:'us',symbol:'$',locale:'en-US',currency:'USD',label:'US',flag:'🇺🇸'};
@@ -543,9 +549,75 @@ function ih(k){
   const t=INFO[k]; return t?` <span class="ih" title="${t.replace(/"/g,'&quot;')}">i</span>`:'';
 }
 
-let sortKey=pref('sortKey','market_value'), sortDir=pref('sortDir',-1);
+// Every trade in one ticker, with each sale showing the buys it actually sold. Matching
+// is FIFO — oldest shares first — which is the intuitive reading of "which purchase did
+// this sell?" and the rule Indian equity tax uses. The weighted-average cost used for
+// portfolio totals cannot answer this at all: it collapses every buy into one number and
+// has no lots left to point at.
+async function showTrades(ticker){
+  const d=await get('/api/trades/'+encodeURIComponent(ticker)+'?market='+STATE.market);
+  const money=v=>usd(v);
+  const rows=d.rows.map(r=>{
+    const cls=r.type==='buy'?'':r.type==='sell'?'sell':'div';
+    const head=`<tr class="tr-${r.type}">
+      <td>${r.date}</td><td><b>${r.type}</b></td>
+      <td>${r.quantity?fmt(r.quantity,r.quantity<10?3:0):''}</td>
+      <td>${r.price?money(r.price):''}</td>
+      <td>${money(r.amount)}</td>
+      <td class="mut">${fmt(r.running,r.running%1?3:0)}</td>
+      <td class="${r.realized==null?'mut':sign(r.realized)}">${
+        r.type==='sell'?(r.realized==null?'—':money(r.realized)):''}</td></tr>`;
+    const lots=(r.matched||[]).map(m=>`<tr class="tr-lot"><td colspan="2" class="mut">
+        ↳ sold shares bought ${m.date}</td>
+      <td class="mut">${fmt(m.quantity,m.quantity<10?3:0)}</td>
+      <td class="mut">${money(m.price)}</td>
+      <td class="mut">held ${m.held_days}d</td><td></td>
+      <td class="${sign(m.gain)}">${money(m.gain)}</td></tr>`).join('');
+    const un=r.unmatched?`<tr class="tr-lot"><td colspan="7" class="mut">
+        ↳ ${fmt(r.unmatched,3)} units had no purchase on record — a split, or shares from a
+        demerger. Realised is withheld rather than computed from a partial cost.</td></tr>`:'';
+    return head+lots+un;
+  }).join('');
+  const openLots=d.open_lots.length?`<p class="mut" style="font-size:11px;margin-top:10px">
+     Still held, oldest first: ${d.open_lots.map(l=>
+       `${fmt(l.quantity,l.quantity<10?3:0)} @ ${usd(l.price)} from ${l.date}`).join(' · ')}</p>`:'';
+  $('#tlog').innerHTML=`<div class="prhead">
+     <div><b>${d.name||d.ticker}</b>${d.name?`<div class="cname">${d.ticker}</div>`:''}</div>
+     <button class="act ghost" id="tclose">Close</button></div>
+   <div class="wrap" style="max-height:60vh;overflow:auto"><table class="dense"><thead><tr>
+     <th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Amount</th>
+     <th>Holding</th><th>Realised</th></tr></thead><tbody>${rows}</tbody></table></div>
+   ${openLots}
+   <p class="mut" style="font-size:11px">Sales are matched to purchases first-in-first-out,
+    the same basis Indian equity tax uses. Holding shows the running share count after each
+    trade.</p>`;
+  $('#tclose').onclick=()=>$('#tlog').close();
+  $('#tlog').showModal();
+}
+
+let sortKey=pref('sortKey','market_value'), sortDir=pref('sortDir',-1),
+    holdStatus=pref('holdStatus','all'), holdAsset=pref('holdAsset','all'),
+    holdQ=pref('holdQ','');
+
+// Closed positions outnumber open ones five to one here, so a table showing everything is
+// mostly history. Status and asset are separate filters because they answer different
+// questions — "what do I own now" and "how have my funds done".
+function holdRows(all){
+  const q=holdQ.trim().toUpperCase();
+  return all.filter(x=>{
+    if(holdStatus==='open'   && !(x.market_value>0)) return false;
+    if(holdStatus==='closed' &&  (x.market_value>0)) return false;
+    if(holdAsset==='mf'     && x.asset!=='mf') return false;
+    if(holdAsset==='equity' && x.asset!=='equity') return false;
+    if(holdAsset==='other'  && ['mf','equity'].includes(x.asset)) return false;
+    if(q && !(x.ticker.toUpperCase().includes(q) || (x.name||'').toUpperCase().includes(q)))
+      return false;
+    return true;
+  });
+}
 function holdings(){
-  const r=[...STATE.ov.results].sort(cmpBy(sortKey,sortDir));
+  const all=STATE.ov.results;
+  const r=holdRows(all).sort(cmpBy(sortKey,sortDir));
   // Simple sits next to XIRR on purpose: for a position you exited and re-entered they
   // can disagree wildly, and the pair is the tell. MAZDOCK is +438% annualised and
   // +18.6% simple, because XIRR weights by time and the first episode was the small one.
@@ -554,7 +626,15 @@ function holdings(){
     ['simple_return','Simple',''],['weight','Weight','c3'],['invested','Invested','c1'],
     ['proceeds','Sold','c4'],['market_value','Value',''],['dividends','Divs','c4'],
     ['net_profit','Net P/L',''],['days_held','Held','c5'],['n_flows','Flows','c5']];
+  const seg=(id,cur,opts)=>`<span class="seg" id="${id}">${opts.map(([k,l])=>
+    `<button data-v="${k}" aria-pressed="${k===cur}">${l}</button>`).join('')}</span>`;
   $('#main').innerHTML=`<div class="card full"><h2>All holdings — click a header to sort</h2>
+   <div class="row">
+    <input id="hq" placeholder="Search name or ticker" value="${holdQ}" style="flex:1;min-width:150px">
+    ${seg('hstat',holdStatus,[['all','All'],['open','Held now'],['closed','Closed only']])}
+    ${seg('hasset',holdAsset,[['all','Everything'],['equity','Stocks'],['mf','Funds'],['other','Other']])}
+    <span class="mut" style="font-size:11px">${r.length} of ${all.length}</span>
+   </div>
    <div class="wrap"><table class="dense"><thead><tr>${cols.map(([k,l,cl])=>
     `<th data-k="${k}" class="${cl}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
@@ -566,7 +646,10 @@ function holdings(){
      <td class="c1">${usd(x.invested)}</td><td class="mut c4">${usd(x.proceeds)}</td>
      <td>${usd(x.market_value)}</td><td class="c4">${usd(x.dividends,2)}</td>
      <td class="${sign(x.net_profit)}">${usd(x.net_profit)}</td>
-     <td class="mut c5">${heldCell(x)}</td><td class="mut c5">${x.n_flows}</td></tr>`).join('')}
+     <td class="mut c5">${heldCell(x)}</td><td class="mut c5">${x.n_flows>0
+       ?`<a href="#" class="flowlink" data-t="${encodeURIComponent(x.ticker)}"
+           title="Show every trade, with each sale matched to the buys it sold">${x.n_flows}</a>`
+       :x.n_flows}</td></tr>`).join('')}
    </tbody></table>
    <p class="mut" style="font-size:11px;margin-top:8px">
      <b class="chip re">re-entered</b> sold out completely and bought back in — XIRR is set
@@ -580,6 +663,14 @@ function holdings(){
   $('#main').querySelector('thead').onclick=e=>{const k=e.target.dataset.k; if(!k)return;
     if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=-1;}
     setPref('sortKey',sortKey); setPref('sortDir',sortDir); holdings();};
+  $('#hq').oninput=e=>{holdQ=e.target.value; setPref('holdQ',holdQ); holdings();
+    const i=$('#hq'); i.focus(); i.setSelectionRange(i.value.length,i.value.length);};
+  $('#hstat').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
+    holdStatus=v; setPref('holdStatus',v); holdings();};
+  $('#hasset').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
+    holdAsset=v; setPref('holdAsset',v); holdings();};
+  $('#main').onclick=e=>{const a=e.target.closest('.flowlink'); if(!a)return;
+    e.preventDefault(); showTrades(decodeURIComponent(a.dataset.t));};
 }
 
 async function buys(){

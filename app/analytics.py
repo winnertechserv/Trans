@@ -302,6 +302,62 @@ def _xirr_scoped(c, market, as_of):
             "xirr_1y": y_r, "xirr_1y_note": y_n,
             "n_open": len(open_t), "n_closed": len(closed_t), "n_1y": len(recent)}
 
+def trades(c, ticker, market=None):
+    """Every transaction in one ticker, with each sale matched back to the buys it sold.
+
+    Matching is FIFO — the oldest unsold shares go first — which is both the intuitive
+    reading of "which purchase did this sell?" and the rule Indian equity taxation uses.
+    Weighted-average cost, used elsewhere for portfolio totals, deliberately cannot answer
+    this: it collapses every purchase into one number and has no lots to point at.
+
+    A sale can go unmatched when purchase rows are missing, which happens for anything
+    that split (order history keeps pre-split quantities) and for shares from a demerger.
+    Those are reported as unmatched rather than silently matched against nothing, and the
+    sale's realised figure is withheld instead of being computed from a partial cost.
+    """
+    br = _brokers(market)
+    rows = list(c.execute(
+        "SELECT date,type,quantity,price,amount,fees,broker,asset FROM transactions"
+        " WHERE ticker=?" + _ba(br) + " ORDER BY date,id", (ticker, *br)))
+    lots, out = [], []
+    for r in rows:
+        q = r["quantity"] or 0.0
+        px = r["price"] or 0.0
+        rec = {"date": r["date"], "type": r["type"], "quantity": q, "price": px,
+               "amount": round((r["amount"] if r["amount"] is not None else q * px), 2),
+               "broker": r["broker"]}
+        if r["type"] == "buy":
+            lots.append([r["date"], q, px])
+        elif r["type"] == "sell":
+            need, matched, cost = q, [], 0.0
+            while need > 1e-9 and lots:
+                lot = lots[0]
+                take = min(need, lot[1])
+                held = (dt.date.fromisoformat(r["date"]) - dt.date.fromisoformat(lot[0])).days
+                matched.append({"date": lot[0], "quantity": round(take, 4),
+                                "price": lot[2], "held_days": held,
+                                "gain": round(take * (px - lot[2]), 2)})
+                cost += take * lot[2]
+                need -= take
+                lot[1] -= take
+                if lot[1] <= 1e-9:
+                    lots.pop(0)
+            rec["matched"] = matched
+            rec["unmatched"] = round(need, 4) if need > 1e-9 else 0
+            rec["realized"] = round(q * px - cost, 2) if need <= 1e-9 else None
+        out.append(rec)
+    qty = 0.0
+    for rec in out:
+        if rec["type"] == "buy":
+            qty += rec["quantity"]
+        elif rec["type"] == "sell":
+            qty -= rec["quantity"]
+        rec["running"] = round(qty, 4)
+    return {"ticker": ticker, "name": company_names(c).get(ticker),
+            "rows": out, "open_lots": [{"date": d, "quantity": round(q, 4), "price": p}
+                                       for d, q, p in lots if q > 1e-9]}
+
+
 def daily_buys(c, days=30, market=None):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     by_day = collections.OrderedDict()

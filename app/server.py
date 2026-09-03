@@ -59,6 +59,9 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/contributions": return self._json(A.contributions(c, market=mk))
             if p == "/api/costs":       return self._json(A.costs(c))
             if p == "/api/health":      return self._json(A.health(c, market=mk))
+            if p.startswith("/api/trades/"):
+                return self._json(A.trades(c, urllib.parse.unquote(p.rsplit("/", 1)[1]),
+                                           market=mk))
             if p.startswith("/api/fundamentals/"):
                 return self._json(A.fundamentals(c, p.rsplit("/", 1)[1].upper()))
             if p == "/api/sync/prompt":
