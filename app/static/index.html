@@ -36,6 +36,9 @@ tbody tr:hover{background:var(--chip)}
   font-style:italic;font-weight:600;cursor:help;vertical-align:middle;margin-left:4px;
   text-transform:none;letter-spacing:0}
 .ih:hover{border-color:var(--acc);color:var(--acc)}
+/* Marks a cell that is showing a simple return where an annual rate would mislead. */
+.smark{font-size:9px;font-weight:700;color:var(--mut);cursor:help;margin-left:2px;
+  border-bottom:1px dotted var(--mut)}
 .cname{font-size:11px;color:var(--mut);font-weight:400;margin-top:1px;max-width:240px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Bound the name itself rather than every first column in the app — report tables and
@@ -333,9 +336,7 @@ function allocRows(open){
   return open.filter(p=>(!allocSec||p.sector_label===allocSec)
       && (!q||p.ticker.toUpperCase().includes(q)||(p.name||'').toUpperCase().includes(q)
              ||(p.sector_label||'').toUpperCase().includes(q)))
-    .sort((a,b)=>{const A=sortVal(a,allocKey),B=sortVal(b,allocKey);
-      if(A==null)return 1; if(B==null)return -1;
-      return (typeof A==='string'?A.localeCompare(B):(A>B?1:A<B?-1:0))*allocDir;});
+    .sort(cmpBy(allocKey,allocDir));
 }
 // A stock's ticker is how you think of it; a fund's is an ISIN or, on Paytm, a folio and
 // a hash — meaningless to read and long enough to force the table sideways. So funds lead
@@ -413,17 +414,40 @@ function xirrCell(x){
   if(x.xirr==null)
     return `<span class="mut" title="${(x.note||'no rate').replace(/"/g,'&quot;')}">—</span>`;
   if(xirrOK(x)) return `<span class="${sign(x.xirr)}">${pct(x.xirr,1)}</span>`;
+  // Rather than withhold the cell, fall back to the one figure that stays true over any
+  // period — the simple return — and mark it, so the column is never silently comparing
+  // an annual rate against a nine-day one.
+  if(x.simple_return==null)
+    return `<span class="mut" title="No usable rate: ${pct(x.xirr,1)} annualised.">—</span>`;
   const d=heldDays(x);
-  const why=(d!=null&&d<XIRR_MIN_DAYS)
-    ? `it was held only ${d} days, and annualising a period that short magnifies it past meaning`
-    : `a money-weighted rate above 1000% a year reflects briefly-deployed capital, not performance`;
-  const t=`Annualised rate is ${pct(x.xirr,1)}, but ${why}. `
-    +`Simple return over its whole life was ${pct(x.simple_return,1)}.`;
-  return `<span class="mut" style="cursor:help" title="${t.replace(/"/g,'&quot;')}">n/m</span>`;
+  const t=(d!=null&&d<XIRR_MIN_DAYS)
+    ? `Simple return, not annualised — held only ${d} days. Annualising that short a `
+      +`period would give ${pct(x.xirr,1)}, which says more about the ${d} days than about `
+      +`the holding.`
+    : `Simple return, not annualised — the money-weighted rate is ${pct(x.xirr,1)}, above `
+      +`1000% a year, which reflects capital deployed briefly rather than performance.`;
+  return `<span class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</span>`
+    +`<sup class="smark" title="${t.replace(/"/g,'&quot;')}">s</sup>`;
 }
-// Sorting has to agree with what is shown, or "sort by XIRR" heads the table with the
-// rows the table itself declines to state.
-function sortVal(o,k){ return k==='xirr' ? (xirrOK(o)?o.xirr:null) : o[k]; }
+// Sorting has to agree with what is shown. An annual rate and a simple return are not
+// comparable, so rows showing one are never interleaved with rows showing the other:
+// annualised rows rank among themselves, marked rows follow and rank by simple return.
+// They stay last in either direction, the same convention the table already uses for
+// missing values.
+function cmpBy(k,dir){
+  return (a,b)=>{
+    if(k==='xirr'){
+      const ao=xirrOK(a), bo=xirrOK(b);
+      if(ao!==bo) return ao?-1:1;
+      const A=ao?a.xirr:a.simple_return, B=bo?b.xirr:b.simple_return;
+      if(A==null)return 1; if(B==null)return -1;
+      return (A>B?1:A<B?-1:0)*dir;
+    }
+    const A=a[k],B=b[k];
+    if(A==null)return 1; if(B==null)return -1;
+    return (A>B?1:A<B?-1:0)*dir;
+  };
+}
 
 const MOVER_MIN_DAYS=90;
 function movers(r){
@@ -455,8 +479,9 @@ const INFO={
  sector_label:"Category used to decide which fundamentals matter — P/B leads for banks, "
    +"P/E is omitted for REITs and MLPs. Set by hand in config; 'Unclassified' means "
    +"nobody has mapped it yet.",
- xirr:"Shown as n/m when annualising cannot mean anything — under 90 days held, or above "
-   +"1000% a year. Hover such a cell for the raw figure and read Simple instead. "
+ xirr:"Where annualising cannot mean anything — under 90 days held, or above 1000% a "
+   +"year — the cell shows the SIMPLE return instead, marked with a small s. Hover it for "
+   +"the annualised figure and why it is not shown. "
    +"Money-weighted annual return: solves for the rate that makes every buy (cash out), "
    +"sell (cash in), dividend and today's holding value discount back to zero, on a "
    +"365-day basis. It is ANNUALISED, so a short round-trip explodes: +57% held ten days "
@@ -490,10 +515,7 @@ function ih(k){
 
 let sortKey=pref('sortKey','market_value'), sortDir=pref('sortDir',-1);
 function holdings(){
-  const r=[...STATE.ov.results].sort((a,b)=>{
-    const A=sortVal(a,sortKey),B=sortVal(b,sortKey);
-    if(A==null)return 1; if(B==null)return -1;
-    return (A>B?1:A<B?-1:0)*sortDir;});
+  const r=[...STATE.ov.results].sort(cmpBy(sortKey,sortDir));
   // Simple sits next to XIRR on purpose: for a position you exited and re-entered they
   // can disagree wildly, and the pair is the tell. MAZDOCK is +438% annualised and
   // +18.6% simple, because XIRR weights by time and the first episode was the small one.
