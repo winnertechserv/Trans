@@ -22,6 +22,11 @@ nav button{background:none;border:0;padding:11px 14px;color:var(--mut);cursor:po
 font:inherit;border-bottom:2px solid transparent;white-space:nowrap}
 nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--acc);font-weight:600}
 main{padding:20px 22px 60px;max-width:1280px}
+/* Holdings is a twelve-column table, not prose: it gets whatever the screen has, while
+   the reading-width cap stays for every other tab. Driven by a class rather than :has(),
+   which not every browser this might be opened in will support. */
+main.full{max-width:none}
+.card.full{max-width:none}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
 .card h2{font-size:13px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
@@ -50,6 +55,15 @@ tbody tr:hover{background:var(--chip)}
 .dense .fname{max-width:170px;font-size:12px}
 .dense .cname{max-width:170px}
 .dense th,.dense td{padding:6px 8px;font-size:12px}
+.dense{table-layout:auto;width:100%}
+/* Rather than scroll on a small screen, shed columns in reverse order of usefulness.
+   Ticker, XIRR, Simple, Value and Net P/L survive to the narrowest width — those are
+   what the table is for; Flows, Held, Divs and Sector are context. */
+@media (max-width:1500px){ .dense .c5{display:none} }
+@media (max-width:1250px){ .dense .c4{display:none} }
+@media (max-width:1050px){ .dense .c3{display:none} }
+@media (max-width:860px){  .dense .c2{display:none} }
+@media (max-width:680px){  .dense .c1{display:none; } .dense .fname,.dense .cname{max-width:120px} }
 .dense td:first-child,.dense th:first-child{position:sticky;left:0;background:var(--panel)}
 .chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
   font-size:10px;cursor:help}
@@ -281,7 +295,10 @@ async function boot(){
   await loadMarket();
   applyRoute(routeFrom(location.pathname),{replace:true});   // deep link / refresh
 }
-function render(){({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();}
+function render(){
+  $('#main').classList.toggle('full', tab==='holdings');   // wide table, not prose
+  ({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();
+}
 
 function overview(){
   const {overall:o,results:r,health:h}=STATE.ov;
@@ -519,23 +536,24 @@ function holdings(){
   // Simple sits next to XIRR on purpose: for a position you exited and re-entered they
   // can disagree wildly, and the pair is the tell. MAZDOCK is +438% annualised and
   // +18.6% simple, because XIRR weights by time and the first episode was the small one.
-  const cols=[['ticker','Ticker'],['sector_label','Sector'],['xirr','XIRR'],
-    ['simple_return','Simple'],['weight','Weight'],['invested','Invested'],
-    ['proceeds','Sold'],['market_value','Value'],['dividends','Divs'],['net_profit','Net P/L'],
-    ['days_held','Held'],['n_flows','Flows']];
-  $('#main').innerHTML=`<div class="card"><h2>All holdings — click a header to sort</h2>
-   <div class="wrap"><table class="dense"><thead><tr>${cols.map(([k,l])=>
-    `<th data-k="${k}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
+  // Third entry is the shed-order class: c5 goes first as the screen narrows, c1 last.
+  const cols=[['ticker','Ticker',''],['sector_label','Sector','c2'],['xirr','XIRR',''],
+    ['simple_return','Simple',''],['weight','Weight','c3'],['invested','Invested','c1'],
+    ['proceeds','Sold','c4'],['market_value','Value',''],['dividends','Divs','c4'],
+    ['net_profit','Net P/L',''],['days_held','Held','c5'],['n_flows','Flows','c5']];
+  $('#main').innerHTML=`<div class="card full"><h2>All holdings — click a header to sort</h2>
+   <div class="wrap"><table class="dense"><thead><tr>${cols.map(([k,l,cl])=>
+    `<th data-k="${k}" class="${cl}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
      <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
-     <td class="mut">${x.sector_label}</td>
+     <td class="mut c2">${x.sector_label}</td>
      <td>${xirrCell(x)}</td>
      <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
-     <td>${pct(x.weight,1)}</td>
-     <td>${usd(x.invested)}</td><td class="mut">${usd(x.proceeds)}</td>
-     <td>${usd(x.market_value)}</td><td>${usd(x.dividends,2)}</td>
+     <td class="c3">${pct(x.weight,1)}</td>
+     <td class="c1">${usd(x.invested)}</td><td class="mut c4">${usd(x.proceeds)}</td>
+     <td>${usd(x.market_value)}</td><td class="c4">${usd(x.dividends,2)}</td>
      <td class="${sign(x.net_profit)}">${usd(x.net_profit)}</td>
-     <td class="mut">${heldCell(x)}</td><td class="mut">${x.n_flows}</td></tr>`).join('')}
+     <td class="mut c5">${heldCell(x)}</td><td class="mut c5">${x.n_flows}</td></tr>`).join('')}
    </tbody></table>
    <p class="mut" style="font-size:11px;margin-top:8px">
      <b class="chip re">re-entered</b> sold out completely and bought back in — XIRR is set
