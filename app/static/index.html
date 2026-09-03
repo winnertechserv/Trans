@@ -750,12 +750,26 @@ async function divs(){
 // browser rather than round-tripping, because /api/contributions already returns every
 // month there has ever been and the aggregation is a group-by.
 let contribPeriod=pref('contribPeriod','month'), contribYears=pref('contribYears',2),
-    contribAsset=pref('contribAsset','all');
+    contribAsset=pref('contribAsset','all'), contribFY=pref('contribFY',false);
 const ASSET_LABEL={equity:'Stocks',mf:'Mutual funds',crypto:'Crypto',
                    sgb:'Gold bonds',bond:'Bonds'};
+// India's financial year runs April to March, and every tax statement, capital-gains
+// filing and broker report is cut that way. A calendar-year total is the wrong number to
+// compare any of those against, so yearly grouping can follow FY instead.
 function contribBucket(m,p){
   const y=+m.slice(0,4), mo=+m.slice(5,7);
-  return p==='year'?String(y):p==='quarter'?`${y}-Q${Math.ceil(mo/3)}`:m;
+  if(p==='year')
+    return contribFY ? `FY${mo>=4?y:y-1}-${String((mo>=4?y+1:y)%100).padStart(2,'0')}`
+                     : String(y);
+  if(p==='quarter'){
+    // Quarters follow the same convention: Apr-Jun is Q1 of the financial year.
+    if(contribFY){
+      const fy=mo>=4?y:y-1, q=Math.floor(((mo-4+12)%12)/3)+1;
+      return `FY${fy}-${String((fy+1)%100).padStart(2,'0')} Q${q}`;
+    }
+    return `${y}-Q${Math.ceil(mo/3)}`;
+  }
+  return m;
 }
 function contribSeries(ser){
   let cut='0000-00';
@@ -780,6 +794,9 @@ function contribCard(cn){
   const skip=(cn.realized_skipped||[]).length;
   const per=[['month','Monthly'],['quarter','Quarterly'],['year','Yearly']];
   const spans=[[1,'1y'],[3,'3y'],[5,'5y'],[10,'10y'],['all','All']];
+  // Offered only where it means something: India files Apr-Mar, and the US does not.
+  const fyOffered = STATE.market==='in' && contribPeriod!=='month';
+  if(!fyOffered && contribFY) contribFY=false;
   return `<h2>New capital deployed</h2>
    <div class="row">
     <span class="lbl">Group by</span>
@@ -788,6 +805,12 @@ function contribCard(cn){
     <span class="lbl" style="margin-left:8px">Span</span>
     <span class="seg" id="cspan">${spans.map(([k,l])=>
       `<button data-v="${k}" aria-pressed="${String(k)===String(contribYears)}">${l}</button>`).join('')}</span>
+    ${fyOffered?`<span class="lbl" style="margin-left:8px">Year basis</span>
+     <span class="seg" id="cfy">
+      <button data-v="cal" aria-pressed="${!contribFY}">Calendar</button>
+      <button data-v="fy" aria-pressed="${contribFY}" title="April to March, the basis
+        every Indian tax statement and capital-gains filing uses">Financial</button>
+     </span>`:''}
     ${(cn.assets||[]).length>1?`<span class="lbl" style="margin-left:8px">Asset</span>
      <span class="seg" id="casset">${[['all','All'],...cn.assets.map(a=>[a,ASSET_LABEL[a]||a])]
        .map(([k,l])=>`<button data-v="${k}" aria-pressed="${k===contribAsset}">${l}</button>`).join('')}</span>`:''}
@@ -810,6 +833,7 @@ function contribCard(cn){
      order history shows them buying — that is what a split looks like, and a per-share
      average there would invent a loss. Those sales still count in Sold, so this column
      totals less than the Booked P/L in the header.`:''}
+     ${contribFY?'Periods are financial years, April to March. ':''}
      Trailing 12 months bought <b>${usd(cn.trailing_12m)}</b>${contribAsset!=='all'
        ?` (all assets). Showing <b>${ASSET_LABEL[contribAsset]||contribAsset}</b> only.`:'.'}</p>`
     :`<p class="mut">No ${contribAsset==='all'?'':((ASSET_LABEL[contribAsset]||contribAsset)+' ')}activity
@@ -843,6 +867,9 @@ async function analysis(){
       $('#ccard').innerHTML=contribCard(cn); wire();};
     const ca=$('#casset'); if(ca) ca.onclick=e=>{const v=e.target.dataset.v; if(!v)return;
       contribAsset=v; setPref('contribAsset',v); $('#ccard').innerHTML=contribCard(cn); wire();};
+    const cf=$('#cfy'); if(cf) cf.onclick=e=>{const v=e.target.dataset.v; if(!v)return;
+      contribFY=(v==='fy'); setPref('contribFY',contribFY);
+      $('#ccard').innerHTML=contribCard(cn); wire();};
   };
   wire();
 }
