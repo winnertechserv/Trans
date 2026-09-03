@@ -362,13 +362,23 @@ def _asset_of(ticker, explicit=None):
         pass
     return "equity"
 
-def upsert_positions(c, rows, asof=None):
+def upsert_positions(c, rows, asof=None, broker="robinhood"):
+    """Replace one broker's positions. A snapshot is authoritative for its own broker
+    only — it says nothing about the others.
+
+    This used to `DELETE FROM positions` outright, which was right when Robinhood was the
+    only source and became silent data loss the moment a second market existed: a US sync
+    deleted every Zerodha and Paytm holding, and nothing complained because the US numbers
+    it was checked against were perfectly correct.
+    """
     asof = asof or dt.date.today().isoformat()
-    c.execute("DELETE FROM positions")
+    c.execute("DELETE FROM positions WHERE broker=?", (broker,))
     for r in rows:
-        c.execute("INSERT INTO positions(ticker,quantity,price,asset,asof) VALUES(?,?,?,?,?)",
+        c.execute("INSERT INTO positions(ticker,quantity,price,asset,asof,broker,currency)"
+                  " VALUES(?,?,?,?,?,?,?)",
                   (r["ticker"], float(r["quantity"]), float(r["price"]),
-                   _asset_of(r["ticker"], r.get("asset")), asof))
+                   _asset_of(r["ticker"], r.get("asset")), asof, broker,
+                   "USD" if broker == "robinhood" else "INR"))
     return len(rows)
 
 def upsert_fundamentals(c, rows, asof=None):
