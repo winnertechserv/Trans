@@ -463,10 +463,13 @@ def remap_symbols(c):
     al = CFG.ticker_aliases()
     moved = []
     for table, extra in (("transactions", ""), ("positions", "")):
-        for r in c.execute(f"SELECT rowid, ticker FROM {table} WHERE broker='zerodha'").fetchall():
+        # Alias rowid: `transactions` has its own `id` column, which shadows rowid in the
+        # result set, so selecting it unaliased returns the id under the wrong key.
+        for r in c.execute(f"SELECT rowid AS rid, ticker FROM {table}"
+                           " WHERE broker='zerodha'").fetchall():
             canon = MK.canonical_symbol(r["ticker"], al)
             if canon != r["ticker"]:
-                c.execute(f"UPDATE {table} SET ticker=? WHERE rowid=?", (canon, r["rowid"]))
+                c.execute(f"UPDATE {table} SET ticker=? WHERE rowid=?", (canon, r["rid"]))
                 moved.append(f"{table}: {r['ticker']} -> {canon}")
     c.commit()
     return moved

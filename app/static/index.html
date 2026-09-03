@@ -421,6 +421,9 @@ function wireAlloc(open){
 // True, and useless. Ranking raw XIRR also surfaced positions sold years ago, which are
 // not "movers" in any sense a portfolio dashboard means. So: current holdings only, and
 // only once there is enough time for an annual rate to mean something.
+function noCostChip(x){
+  return x.no_cost ? ` <span class="chip re" title="${(x.note||'').replace(/"/g,'&quot;')}">no cost</span>` : '';
+}
 function reChip(x){
   return x.re_entered ? ` <span class="chip re" title="Sold out and bought back in `
     +`${x.episodes} separate times. XIRR weights flows by time, so it reflects the first `
@@ -638,7 +641,7 @@ function holdings(){
    <div class="wrap"><table class="dense"><thead><tr>${cols.map(([k,l,cl])=>
     `<th data-k="${k}" class="${cl}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
    <tbody>${r.map(x=>`<tr>
-     <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
+     <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}${noCostChip(x)}</td>
      <td class="mut c2">${x.sector_label}</td>
      <td>${xirrCell(x)}</td>
      <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
@@ -652,6 +655,8 @@ function holdings(){
        :x.n_flows}</td></tr>`).join('')}
    </tbody></table>
    <p class="mut" style="font-size:11px;margin-top:8px">
+     <b class="chip re">no cost</b> arrived through a demerger, so nothing was paid for them
+     here and Net P/L is the whole sale, not a return.
      <b class="chip re">re-entered</b> sold out completely and bought back in — XIRR is set
      mostly by the earliest episode, so read <b>Simple</b> alongside it.
      <b>Invested</b> is every unit of currency ever spent buying; <b>Sold</b> is what came

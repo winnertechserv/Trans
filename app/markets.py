@@ -66,7 +66,24 @@ def base_symbol(ticker):
 # position. Renames are facts about the market, not about one portfolio, so the ones we
 # have confirmed live here; `ticker_aliases` in config.json extends this per user.
 RENAMES = {
-    "GET&D": "GVT&D",   # GE T&D India -> GE Vernova T&D India (2025)
+    # Each of these was confirmed three ways before being added: the old symbol's leftover
+    # share count exactly equals what the new symbol sold without ever buying, the last
+    # trade under the old name precedes the first under the new one, and the two names
+    # describe the same company. Quantity alone is not enough — matching purely on it also
+    # paired MINDAIND with GMMPFAUDLR and LTI with NESTLEIND, which is nonsense.
+    "GET&D": "GVT&D",            # GE T&D India -> GE Vernova T&D India (2025)
+    "ITDCEM": "CEMPRO",          # ITD Cementation India, 190 shares
+    "SUVENPHAR": "COHANCE",      # Suven Pharmaceuticals -> Cohance Lifesciences, 81
+    "MAHINDCIE": "CIEINDIA",     # Mahindra CIE -> CIE Automotive India, 37
+    "MAGMA": "POONAWALLA",       # Magma Fincorp -> Poonawalla Fincorp, 20
+    "ORIENTREF": "RHIM",         # Orient Refractories -> RHI Magnesita India, 11
+    # These three are certain from the names; their share counts do not tie because a
+    # split or bonus intervened. That does not matter to XIRR, which is driven by cash
+    # flows, and it matters a great deal to the cost basis, which is otherwise missing
+    # entirely. SETFGOLD's 2 units became SBIGETS's 200 on a 1:100 split — exactly 100x.
+    "SETFGOLD": "SBIGETS",       # SBI Gold ETF, symbol changed; 1:100 split
+    "PHILIPCARB": "PCBL",        # Phillips Carbon Black -> PCBL (2023); split
+    "MOTHERSUMI": "MOTHERSON",   # Motherson Sumi -> Samvardhana Motherson; bonus
 }
 
 

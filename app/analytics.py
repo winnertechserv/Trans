@@ -199,6 +199,19 @@ def results(c, as_of=None, market=None):
     for r in rows:
         r["weight"] = r["market_value"] / tot
         r["name"] = nm.get(r["ticker"])
+        # Shares that arrived without a purchase — a demerger allots them out of the
+        # parent's cost, so nothing was paid for them here. Net P/L then equals the full
+        # proceeds and reads as pure profit, which it is not: the cost sits in the parent
+        # holding. Flagged rather than adjusted, because the split of basis between parent
+        # and child is a decision the broker never reports.
+        # These rows already carry a note from the XIRR solver ("need at least one
+        # negative and one positive cash flow"), which is a symptom, not the cause — so
+        # the cause replaces it rather than being skipped for its presence.
+        if r["invested"] == 0 and r["proceeds"] > 0:
+            r["note"] = ("no purchase on record — shares received through a demerger or "
+                         "corporate action, whose cost sits with the parent holding. "
+                         "Net P/L here is the full sale proceeds, not a return on capital.")
+            r["no_cost"] = True
         b = basis.get(r["ticker"])
         r["cost_basis"] = b
         r["short_units"] = short.get(r["ticker"])
