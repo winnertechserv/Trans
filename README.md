@@ -49,9 +49,10 @@ every trade behind it.
 
 ![Holdings](docs/images/holdings.png)
 
-**Fundamentals** — every stock against every metric, sortable and searchable.
+**Analysis** — sector exposure, concentration, and capital deployed by month, quarter or
+year, filtered by asset.
 
-![Fundamentals](docs/images/fundamentals.png)
+![Analysis](docs/images/analysis.png)
 
 **Research** — optional third-party analysis, read against the position you actually hold.
 

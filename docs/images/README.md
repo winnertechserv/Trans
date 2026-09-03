@@ -8,7 +8,7 @@ place rather than renaming them, or the README's links break.
 | `overview.png` | Overview tab, US market — the header figures, allocation, top movers |
 | `holdings.png` | Holdings tab — the table with its `re-entered` chip and `ˢ` markers |
 | `research.png` | A research report — verdict strip, plain-English section, position panel |
-| `fundamentals.png` | Fundamentals → All stocks, showing the metric matrix |
+| `analysis.png` | Analysis tab — sector exposure, concentration, capital deployed |
 
 Take them against the demo, never against real holdings:
 

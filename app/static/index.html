@@ -1446,7 +1446,7 @@ async function showReport(t,opt={}){
         about ${usd(0.022,3)} — billed</span></div>`}
    ${summary?`<div class="dca"><h4>Summary (from the report)</h4><div class="md">${md(summary)}</div></div>`:''}
    ${r.context && r.context.market && r.context.market!==STATE.market
-      ? `<div class="banner">This report is for a <b>${r.context.market==='in'?'India':'US'}</b>
+      ? `<div class="banner">This report is for an <b>${r.context.market==='in'?'Indian':'American'}</b>
          holding, and you are viewing the ${STATE.market==='in'?'India':'US'} market. The
          position figures below are in ${r.context.currency}.</div>` : ''}
    ${dcaPanel(r.context,decTxt)}
