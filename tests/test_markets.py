@@ -22,6 +22,14 @@ class BaseSymbol(unittest.TestCase):
         once = MK.base_symbol("MTARTECH-BE")
         self.assertEqual(MK.base_symbol(once), once)
 
+    def test_strips_the_debt_and_gold_bond_series(self):
+        # -NC (debt) and -GB (sovereign gold bonds) were missing from the list, so a
+        # later sync brought a bond and two SGBs back as new tickers, separate from the
+        # holdings already on file.
+        self.assertEqual(MK.base_symbol("863IRFC29-NC"), "863IRFC29")
+        self.assertEqual(MK.base_symbol("SGBMAY29I-GB"), "SGBMAY29I")
+        self.assertEqual(MK.base_symbol("SGBN28VIII-GB"), "SGBN28VIII")
+
     def test_handles_empty(self):
         self.assertEqual(MK.base_symbol(""), "")
         self.assertEqual(MK.base_symbol(None), "")

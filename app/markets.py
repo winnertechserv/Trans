@@ -49,7 +49,11 @@ def all_markets():
 # NSE appends a series code to symbols in some segments (BE = trade-to-trade, SM/ST =
 # SME, and others). Zerodha reports these as part of the tradingsymbol, but Yahoo does
 # not use them: MTARTECH-BE.NS is not found, MTARTECH.NS is.
-NSE_SERIES_SUFFIXES = ("-BE", "-BZ", "-BL", "-SM", "-ST", "-IT", "-GS", "-RR")
+# -NC is the debt series and -GB sovereign gold bonds. Both were missing, so a bond and
+# two SGBs came back from a later sync as 863IRFC29-NC and SGBMAY29I-GB and became
+# separate holdings from the 863IRFC29 and SGBMAY29I already on file.
+NSE_SERIES_SUFFIXES = ("-BE", "-BZ", "-BL", "-SM", "-ST", "-IT", "-GS", "-RR",
+                       "-NC", "-GB")
 
 
 def base_symbol(ticker):
