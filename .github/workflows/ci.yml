@@ -54,6 +54,17 @@ jobs:
           git diff --stat --exit-code samples/demo.db \
             || echo "note: demo.db differs (dates are relative to today, so this is expected)"
 
+      # Through run.sh, not around it. CI previously called app/samples.py directly and
+      # so never touched the entry point the README actually documents — which is how
+      # `./run.sh --demo` shipped crashing on an unbound variable while CI stayed green.
+      - name: The documented entry point works from a bare checkout
+        run: |
+          ./run.sh --help
+          ./run.sh 2>&1 | tee /tmp/bare.txt || true
+          grep -q -- "--demo" /tmp/bare.txt \
+            || { echo "::error::bare ./run.sh should point a newcomer at --demo"; exit 1; }
+          ./run.sh --demo
+
       - name: Smoke test against the demo
         run: |
           python app/samples.py load
