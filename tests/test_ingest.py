@@ -162,3 +162,42 @@ class Folders(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PositionSnapshots(unittest.TestCase):
+    """A snapshot replaces one broker's positions and must leave the others alone.
+
+    upsert_positions used to `DELETE FROM positions` outright — correct when Robinhood was
+    the only source, and silent data loss once a second market existed. A US sync deleted
+    every Zerodha and Paytm holding, and nothing caught it because the US figures it was
+    checked against stayed perfectly correct.
+    """
+
+    def test_a_us_snapshot_leaves_india_untouched(self):
+        with TempDB() as db:
+            import ingest as I
+            db.position("RELIANCE", 10, 100.0, broker="zerodha", currency="INR")
+            db.position("PM1-FUND", 5, 50.0, broker="paytm", currency="INR", asset="mf")
+            I.upsert_positions(db.conn, [{"ticker": "AAPL", "quantity": 1, "price": 200.0}])
+            db.conn.commit()
+            got = {r["broker"]: r["n"] for r in db.conn.execute(
+                "SELECT broker, COUNT(*) n FROM positions GROUP BY broker")}
+            self.assertEqual(got, {"robinhood": 1, "zerodha": 1, "paytm": 1})
+
+    def test_it_does_replace_its_own_brokers_rows(self):
+        with TempDB() as db:
+            import ingest as I
+            db.position("OLD", 99, 1.0, broker="robinhood")
+            I.upsert_positions(db.conn, [{"ticker": "NEW", "quantity": 1, "price": 200.0}])
+            db.conn.commit()
+            rows = [r["ticker"] for r in db.conn.execute(
+                "SELECT ticker FROM positions WHERE broker='robinhood'")]
+            self.assertEqual(rows, ["NEW"])
+
+    def test_broker_and_currency_are_stamped(self):
+        with TempDB() as db:
+            import ingest as I
+            I.upsert_positions(db.conn, [{"ticker": "AAPL", "quantity": 1, "price": 200.0}])
+            db.conn.commit()
+            r = db.conn.execute("SELECT broker,currency FROM positions").fetchone()
+            self.assertEqual((r["broker"], r["currency"]), ("robinhood", "USD"))
