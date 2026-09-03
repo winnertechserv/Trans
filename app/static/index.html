@@ -333,7 +333,7 @@ function allocRows(open){
   return open.filter(p=>(!allocSec||p.sector_label===allocSec)
       && (!q||p.ticker.toUpperCase().includes(q)||(p.name||'').toUpperCase().includes(q)
              ||(p.sector_label||'').toUpperCase().includes(q)))
-    .sort((a,b)=>{const A=a[allocKey],B=b[allocKey];
+    .sort((a,b)=>{const A=sortVal(a,allocKey),B=sortVal(b,allocKey);
       if(A==null)return 1; if(B==null)return -1;
       return (typeof A==='string'?A.localeCompare(B):(A>B?1:A<B?-1:0))*allocDir;});
 }
@@ -360,7 +360,7 @@ function allocTable(open){
      <td>${label(p)}</td>
      <td class="mut">${p.sector_label}</td>
      <td>${usd(p.market_value)}</td><td>${pct(p.weight,1)}</td>
-     <td class="${sign(p.xirr)}">${pct(p.xirr,1)}</td>
+     <td>${xirrCell(p)}</td>
      <td style="width:26%"><div class="bar"><i style="width:${p.market_value/mx*100}%"></i></div></td>
      </tr>`).join('')}</tbody></table></div>
     <p class="mut" style="font-size:11px;margin-top:8px">${rows.length} of ${open.length} positions`
@@ -397,9 +397,37 @@ function heldCell(x){
   return (x.days_held==null?'~':'')+d;
 }
 
+// The same annualisation problem the movers panel dodges, in the table that shows every
+// row. TRIDENT turned Rs960 into Rs1,505 over ten days: +56.8%, and 1,362,658,947% a year.
+// The figure is arithmetically right and worth nothing, and printing it plainly invites
+// exactly the doubt it deserves. Below 90 days held, or above 1000% a year, the cell says
+// n/m and carries the real numbers in its tooltip. Simple return sits in the next column
+// and stays meaningful throughout.
+const XIRR_MIN_DAYS=90, XIRR_MAX=10;
+function xirrOK(x){
+  if(x.xirr==null) return false;
+  const d=heldDays(x);
+  return (d==null||d>=XIRR_MIN_DAYS) && Math.abs(x.xirr)<XIRR_MAX;
+}
+function xirrCell(x){
+  if(x.xirr==null)
+    return `<span class="mut" title="${(x.note||'no rate').replace(/"/g,'&quot;')}">—</span>`;
+  if(xirrOK(x)) return `<span class="${sign(x.xirr)}">${pct(x.xirr,1)}</span>`;
+  const d=heldDays(x);
+  const why=(d!=null&&d<XIRR_MIN_DAYS)
+    ? `it was held only ${d} days, and annualising a period that short magnifies it past meaning`
+    : `a money-weighted rate above 1000% a year reflects briefly-deployed capital, not performance`;
+  const t=`Annualised rate is ${pct(x.xirr,1)}, but ${why}. `
+    +`Simple return over its whole life was ${pct(x.simple_return,1)}.`;
+  return `<span class="mut" style="cursor:help" title="${t.replace(/"/g,'&quot;')}">n/m</span>`;
+}
+// Sorting has to agree with what is shown, or "sort by XIRR" heads the table with the
+// rows the table itself declines to state.
+function sortVal(o,k){ return k==='xirr' ? (xirrOK(o)?o.xirr:null) : o[k]; }
+
 const MOVER_MIN_DAYS=90;
 function movers(r){
-  const ok=r.filter(x=>x.xirr!=null && x.market_value>0 && (heldDays(x)||0)>=MOVER_MIN_DAYS)
+  const ok=r.filter(x=>xirrOK(x) && x.market_value>0 && (heldDays(x)||0)>=MOVER_MIN_DAYS)
             .sort((a,b)=>b.xirr-a.xirr);
   const skipped=r.filter(x=>x.xirr!=null).length-ok.length;
   if(!ok.length) return `<p class="mut">No holding has been open ${MOVER_MIN_DAYS} days yet.</p>`;
@@ -427,7 +455,9 @@ const INFO={
  sector_label:"Category used to decide which fundamentals matter — P/B leads for banks, "
    +"P/E is omitted for REITs and MLPs. Set by hand in config; 'Unclassified' means "
    +"nobody has mapped it yet.",
- xirr:"Money-weighted annual return. Solves for the rate that makes every buy (cash out), "
+ xirr:"Shown as n/m when annualising cannot mean anything — under 90 days held, or above "
+   +"1000% a year. Hover such a cell for the raw figure and read Simple instead. "
+   +"Money-weighted annual return: solves for the rate that makes every buy (cash out), "
    +"sell (cash in), dividend and today's holding value discount back to zero, on a "
    +"365-day basis. It is ANNUALISED, so a short round-trip explodes: +57% held ten days "
    +"reads as millions of percent. It also weights by time exponentially, so for a "
@@ -461,7 +491,7 @@ function ih(k){
 let sortKey=pref('sortKey','market_value'), sortDir=pref('sortDir',-1);
 function holdings(){
   const r=[...STATE.ov.results].sort((a,b)=>{
-    const A=a[sortKey],B=b[sortKey];
+    const A=sortVal(a,sortKey),B=sortVal(b,sortKey);
     if(A==null)return 1; if(B==null)return -1;
     return (A>B?1:A<B?-1:0)*sortDir;});
   // Simple sits next to XIRR on purpose: for a position you exited and re-entered they
@@ -477,7 +507,7 @@ function holdings(){
    <tbody>${r.map(x=>`<tr>
      <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}</td>
      <td class="mut">${x.sector_label}</td>
-     <td class="${sign(x.xirr)}">${pct(x.xirr,1)}</td>
+     <td>${xirrCell(x)}</td>
      <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
      <td>${pct(x.weight,1)}</td>
      <td>${usd(x.invested)}</td><td class="mut">${usd(x.proceeds)}</td>
