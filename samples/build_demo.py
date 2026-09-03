@@ -28,6 +28,7 @@ US = [
     (1919, "MSFT", "buy", 13, 247.40),
     (1688, "VOO",  "buy", 9, 421.10),  (1150, "VOO", "buy", 6, 412.33),
     (250,  "COST", "buy", 4, 905.10),  (120, "COST", "buy", 2, 941.60),   # opened this year
+    (26,   "COST", "buy", 1, 958.40),  (1,   "VOO",  "buy", 2, 596.20),   # keeps it fresh
     (900,  "PFE",  "buy", 60, 28.40),  (300, "PFE",  "sell", 60, 24.15),  # closed at a loss
 ]
 US_DIV = [(1660, "AAPL", 6.60), (1295, "AAPL", 7.15), (571, "MSFT", 9.10)]
@@ -43,6 +44,7 @@ IN = [
     (1556, "DEMOETF", "sell", 100, 38.65),
     (190,  "DEMOPOW", "buy", 45, 372.00),   # opened this year, still held
     (95,   "DEMOPOW", "buy", 15, 410.50),
+    (2,    "DEMOCEM", "buy", 5, 541.20),    # recent, so the demo never reads as stale
 ]
 POSITIONS = [
     ("AAPL", 23, 232.80, "equity", "robinhood", "USD", None, 128.60),
@@ -56,6 +58,14 @@ POSITIONS = [
     ("DEMOMF01", 812.44, 61.90, "mf", "zerodha", "INR", "MF", 43.15),   # no order history
     ("DEMOSPIN", 60, 88.40, "equity", "zerodha", "INR", "NSE", 12.05),  # demerger, no cost
 ]
+# Holdings whose position must NOT be derived from transactions, because their
+# inconsistency is the thing being demonstrated.
+DERIVE_EXEMPT = {
+    "DEMOMF01",   # a fund: holdings reported, no order history — like Zerodha MF
+    "DEMOSPIN",   # demerged shares: allotted, never bought
+    "NEWNAME",    # renamed ticker: its purchases sit under OLDNAME until you add an alias
+}
+
 NAMES = {"AAPL": "Apple Inc.", "NVDA": "NVIDIA Corporation",
          "MSFT": "Microsoft Corporation", "VOO": "Vanguard S&P 500 ETF",
          "NEWNAME": "Demo Industries Limited", "DEMOCEM": "Demo Cement Limited",
@@ -86,13 +96,9 @@ REPORT = [
 **Horizon**: 12 months
 
 **Executive Summary**: Demo Power Limited has re-rated sharply since the position was
-opened and now trades above the range this analysis considers supportable. The operating
-story is intact; the price already reflects it. Holding is reasonable. Adding at these
-levels is not, on the evidence below.
+opened and now trades above the range this analysis considers supportable. The operating story is intact; the price already reflects it. Holding is reasonable. Adding at these levels is not, on the evidence below.
 
-This is a fabricated report about a company that does not exist. It ships with the demo
-so the Research tab has something to render, and so you can see the shape of the output
-before spending anything to generate a real one.
+This is a fabricated report about a company that does not exist. It ships with the demo so the Research tab has something to render, and so you can see the shape of the output before spending anything to generate a real one.
 """),
     ("ta:fundamentals", """
 **What the numbers say**
@@ -105,19 +111,17 @@ before spending anything to generate a real one.
 | Revenue growth (YoY) | 18.3% | 9.7% | Clearly better |
 | Debt / equity | 0.34x | 0.71x | Conservative |
 
-The premium is real and partly earned: margins and growth both beat the sector, and the
-balance sheet carries less debt than most of it. The question is not whether the business
-is better. It is whether it is 70% better, which is what the multiple is asking.
+The premium is real and partly earned: margins and growth both beat the sector, and the balance sheet carries less debt than most of it. The question is not whether the business is better. It is whether it is 70% better, which is what the multiple is asking.
 """),
     ("ta:market", """
 **Price behaviour**
 
 1) The stock is up roughly 15% against an entry three months ago, against a sector that
-   is flat over the same window.
+is flat over the same window.
 2) Volume on up-days has been running well above the trailing average, which usually
-   means the move is being bought rather than drifting.
+means the move is being bought rather than drifting.
 3) It sits near the top of its 52-week range, so there is no technical support close
-   beneath the current price.
+beneath the current price.
 
 None of this says anything about value. It says the market has already noticed.
 """),
@@ -125,34 +129,26 @@ None of this says anything about value. It says the market has already noticed.
 **Recent developments**
 
 - A large order win was announced during the quarter, which accounts for much of the
-  re-rating.
+re-rating.
 - Management guided margins slightly higher for the coming year.
 - An input-cost pass-through remains unresolved and is the clearest near-term risk.
 
-Order wins are lumpy. One of them is not a trend, and the guidance assumes the cost
-pass-through lands.
+Order wins are lumpy. One of them is not a trend, and the guidance assumes the cost pass-through lands.
 """),
     ("ta:bull", """
 **The case for holding on**
 
-The order book gives visibility that most of the sector does not have, and the balance
-sheet means growth does not need financing. If margins hold at the guided level, today's
-multiple compresses on its own within two years without the price falling.
+The order book gives visibility that most of the sector does not have, and the balance sheet means growth does not need financing. If margins hold at the guided level, today's multiple compresses on its own within two years without the price falling.
 """),
     ("ta:bear", """
 **The case against adding**
 
-At 41.6x the multiple assumes the guidance lands and the order book converts. Both are
-plausible; neither is certain. A single missed quarter re-rates a stock priced like this
-much harder than one priced at the sector median, and there is no technical support
-nearby to slow it.
+At 41.6x the multiple assumes the guidance lands and the order book converts. Both are plausible; neither is certain. A single missed quarter re-rates a stock priced like this much harder than one priced at the sector median, and there is no technical support nearby to slow it.
 """),
     ("ta:risk_neutral", """
 **Where the two meet**
 
-Both cases agree on the business and disagree only on the price. That is the honest
-summary, and it is why the rating is Hold rather than Buy or Sell: the position is worth
-keeping, and the entry price for new money is worse than the one already paid.
+Both cases agree on the business and disagree only on the price. That is the honest summary, and it is why the rating is Hold rather than Buy or Sell: the position is worth keeping, and the entry price for new money is worse than the one already paid.
 
 **Position sizing**: this holding is a small share of the portfolio. Nothing here argues
 for changing that in either direction.
@@ -162,16 +158,11 @@ for changing that in either direction.
 
 You own this. It has gone up a lot, quickly.
 
-The company is genuinely doing well — it grows faster than its competitors, keeps more of
-each rupee it earns, and does not owe much. That part is not in doubt.
+The company is genuinely doing well — it grows faster than its competitors, keeps more of each rupee it earns, and does not owe much. That part is not in doubt.
 
-The catch is the price. You are paying about 42 times yearly profits, where similar
-companies cost about 24 times. You are paying up front for growth that has not happened
-yet. If it happens, fine. If one quarter disappoints, a stock priced this way falls
-further than a cheaper one would.
+The catch is the price. You are paying about 42 times yearly profits, where similar companies cost about 24 times. You are paying up front for growth that has not happened yet. If it happens, fine. If one quarter disappoints, a stock priced this way falls further than a cheaper one would.
 
-So: keeping what you have is sensible. Buying more at this price is a different decision
-from the one you made when you bought it, and this analysis does not support it.
+So: keeping what you have is sensible. Buying more at this price is a different decision from the one you made when you bought it, and this analysis does not support it.
 
 *Fabricated example. Demo Power Limited is not a real company.*
 """),
@@ -204,7 +195,34 @@ def main():
     for i, (n, t, ty, q, p) in enumerate(IN):
         tx(f"demo-in-{i}", ago(n), t, ty, q, p, "equity", "zerodha", "INR")
 
+    # Derive share count and average cost from the transactions rather than repeating
+    # them here. Hardcoding both let the two drift apart the moment a trade was added:
+    # three holdings ended up claiming quantities their own history did not support,
+    # which is a bug this app is supposed to *detect*, not ship.
+    #
+    # DERIVE_EXEMPT keeps the two cases that are deliberately inconsistent: holdings with
+    # no order history at all, and the renamed ticker whose buys sit under the old symbol.
+    lots = {}
+    for r in c.execute("SELECT ticker,type,quantity,price FROM transactions"
+                       " WHERE type IN ('buy','sell') ORDER BY date,id"):
+        q = lots.setdefault(r["ticker"], [])
+        if r["type"] == "buy":
+            q.append([r["quantity"], r["price"]])
+        else:                                   # FIFO, as the trade log does
+            need = r["quantity"]
+            while need > 1e-9 and q:
+                take = min(need, q[0][0])
+                q[0][0] -= take
+                need -= take
+                if q[0][0] <= 1e-9:
+                    q.pop(0)
+
     for tick, qty, px, asset, broker, cur, exch, avg in POSITIONS:
+        if tick not in DERIVE_EXEMPT and tick in lots:
+            held = sum(l[0] for l in lots[tick])
+            cost = sum(l[0] * l[1] for l in lots[tick])
+            if held > 1e-9:
+                qty, avg = round(held, 4), round(cost / held, 4)
         c.execute("INSERT OR REPLACE INTO positions(ticker,quantity,price,asset,asof,"
                   "broker,currency,exchange,avg_cost) VALUES(?,?,?,?,?,?,?,?,?)",
                   (tick, qty, px, asset, today, broker, cur, exch, avg))

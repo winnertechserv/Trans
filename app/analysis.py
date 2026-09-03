@@ -375,16 +375,28 @@ def position_context(ticker):
     and asset type), so this is added alongside its output rather than fed into it.
     """
     import analytics as A
+    import markets as MK
     c = D.connect()
     try:
-        rows, _ = A.results(c)
+        # Scope to the market this holding actually lives in. Calling results() with no
+        # market blends US and India, which this app is built never to do: the weight
+        # then came out as a share of dollars and rupees added together, and the figures
+        # were rendered with whichever currency symbol happened to be selected.
+        row = c.execute("SELECT broker FROM positions WHERE ticker=?",
+                        (ticker.upper(),)).fetchone()
+        if row is None:
+            row = c.execute("SELECT broker FROM transactions WHERE ticker=? LIMIT 1",
+                            (ticker.upper(),)).fetchone()
+        market = MK.BROKER_TO_MARKET.get(row["broker"]) if row else None
+        rows, _ = A.results(c, market=market)
         r = next((x for x in rows if x["ticker"] == ticker.upper()), None)
-        bp = A.buy_program(c, 30)
+        bp = A.buy_program(c, 30, market=market)
         prog = next((t for t in bp["tickers"] if t["ticker"] == ticker.upper()), None)
     finally:
         c.close()
     if not r:
         return None
+    m = MK.get(market)
     per_buy = prog["per_buy"] if prog else 0.0
     buys_30d = prog["n"] if prog else 0
     ctx = {
@@ -395,6 +407,9 @@ def position_context(ticker):
         "monthly": round(per_buy * buys_30d, 2),
         "avg_cost": (r["invested"] / r["quantity"]) if r["quantity"] else None,
         "days_of_buying": (round(r["invested"] / per_buy) if per_buy else None),
+        # Carried so the panel renders in the holding's own currency rather than in
+        # whichever market the user happens to have selected.
+        "market": m["key"], "symbol": m["symbol"], "currency": m["currency"],
     }
     return ctx
 

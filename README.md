@@ -37,6 +37,28 @@ New here? **`./run.sh --demo`** fills the app with an invented portfolio across 
 markets, including a real research report, so you can see what it does before connecting a
 broker. **`./run.sh --clear-demo`** removes it. See [docs/DEMO.md](docs/DEMO.md).
 
+## What it looks like
+
+![Overview — headline figures, allocation and top movers](docs/images/overview.png)
+
+<details>
+<summary>More screenshots</summary>
+
+**Holdings** — every position, filterable by status and asset. Click a flow count to open
+every trade behind it.
+
+![Holdings](docs/images/holdings.png)
+
+**Fundamentals** — every stock against every metric, sortable and searchable.
+
+![Fundamentals](docs/images/fundamentals.png)
+
+**Research** — optional third-party analysis, read against the position you actually hold.
+
+![Research report](docs/images/research.png)
+
+</details>
+
 ## What you get
 
 | Tab | Shows |
