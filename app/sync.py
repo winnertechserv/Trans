@@ -285,4 +285,11 @@ if __name__ == "__main__":
     c = D.connect()
     print("cursor:", json.dumps(cursor(c)))
     p = write_prompt_files(c)
-    print("\n--- daily prompt ---\n" + p["daily"][:600] + "\n...")
+    # Keys are "<market>:<name>" (us:daily, in:daily, ...) since the US/India
+    # split; there is no bare "daily".
+    print(f"\nwrote {len(p)} prompt files to sync/prompts/")
+    for key in sorted(p):
+        mkey, name = key.split(":", 1)
+        print(f"  {mkey}_{name}.txt  ({len(p[key]):,} chars)")
+    for key in sorted(k for k in p if k.endswith(":daily")):
+        print(f"\n--- {key} ---\n" + p[key][:600] + "\n...")

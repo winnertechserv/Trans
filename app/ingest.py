@@ -406,9 +406,47 @@ def upsert_quotes(c, rows, date=None):
         n += 1
     return n
 
+def upsert_kite_trades(c, rows):
+    """Kite get_trades() -> transactions.
+
+    Kite serves only the current day, so this captures same-day fills that would
+    otherwise wait for the next Console tradebook export. The dedupe key is
+    deliberately IDENTICAL to ingest_zerodha_tradebook's —
+    zt:<trade_id>:<date>:<raw symbol> — so a trade seen here first and in a later
+    CSV second lands once, not twice.
+
+    That identity assumes the API's trade_id is the same value the Console export
+    prints for the same fill. It is the documented id in both, but it has not been
+    verified against a live same-day fill here; if a day's trades ever appear twice
+    (once from MCP, once from the CSV), this assumption is why.
+
+    Field names differ from the CSV: tradingsymbol/transaction_type/average_price
+    rather than symbol/trade_type/price, and the date comes from a fill timestamp.
+    """
+    n = 0
+    aliases = CFG.ticker_aliases()
+    for r in rows or []:
+        raw = (r.get("tradingsymbol") or r.get("symbol") or "").strip().upper()
+        side = (r.get("transaction_type") or r.get("trade_type") or "").strip().lower()
+        qty = float(r.get("quantity") or 0)
+        px = float(r.get("average_price") or r.get("price") or 0)
+        ts = (r.get("fill_timestamp") or r.get("exchange_timestamp")
+              or r.get("order_timestamp") or r.get("trade_date") or "")
+        date = str(ts)[:10]
+        if not (raw and qty and side in ("buy", "sell") and date):
+            continue
+        sym = MK.canonical_symbol(raw, aliases)
+        if not sym:
+            continue
+        oid = f"zt:{r.get('trade_id','')}:{date}:{raw}"
+        n += _ins2(c, oid, date, sym, side, qty, px, None, 0.0,
+                   _kite_asset(sym), "user", "zerodha", "INR")
+    return n
+
 HANDLERS = {
     "orders_equity": upsert_equity_orders, "orders_crypto": upsert_crypto_orders,
     "kite_holdings": upsert_kite_holdings, "kite_mf_holdings": upsert_kite_mf_holdings,
+    "kite_trades": upsert_kite_trades,
     "positions": upsert_positions, "fundamentals": upsert_fundamentals, "quotes": upsert_quotes,
 }
 
@@ -419,21 +457,28 @@ def ingest_envelope(c, env):
 
 def run_inbox(c):
     total, files = 0, []
-    csvs = sorted(glob.glob(os.path.join(INBOX, "tradebook-*.csv")))
+    handled = set()
+    # Leading "*" on purpose: an export saved or re-copied with a prefix
+    # (20260903T153914_tradebook-....csv, the archiver's own stamp) used to miss
+    # a bare "tradebook-*.csv" glob and be skipped in silence. Re-ingesting is
+    # always safe — dedupe is INSERT OR IGNORE on the raw trade key.
+    csvs = sorted(glob.glob(os.path.join(INBOX, "*tradebook-*.csv")))
     if csvs:
         n, seen = ingest_zerodha_tradebook(c, csvs)
         total += n
         files.append(f"zerodha tradebook x{len(csvs)}:+{n}")
+        handled.update(csvs)
         for p in csvs:
             os.replace(p, os.path.join(ARCHIVE,
                        dt.datetime.now().strftime("%Y%m%dT%H%M%S_") + os.path.basename(p)))
-    pm = sorted(glob.glob(os.path.join(INBOX, "Transactions_*.pdf"))
-                + glob.glob(os.path.join(INBOX, "paytm*.pdf"))
-                + glob.glob(os.path.join(INBOX, "paytm*.txt")))
+    pm = sorted(glob.glob(os.path.join(INBOX, "*Transactions_*.pdf"))
+                + glob.glob(os.path.join(INBOX, "*paytm*.pdf"))
+                + glob.glob(os.path.join(INBOX, "*paytm*.txt")))
     if pm:
         n, det = ingest_paytm_statements(c, pm)
         total += n
         files.append(f"paytm x{len(pm)}:+{n} [{'; '.join(det)}]")
+        handled.update(pm)
         for p in pm:
             os.replace(p, os.path.join(ARCHIVE,
                        dt.datetime.now().strftime("%Y%m%dT%H%M%S_") + os.path.basename(p)))
@@ -444,7 +489,21 @@ def run_inbox(c):
         except Exception as e:
             _log(c, "inbox", "error", 0, f"{os.path.basename(f)}: {e}"); continue
         total += n; files.append(f"{os.path.basename(f)}:{env['kind']}:+{n}")
+        handled.add(f)
         os.replace(f, os.path.join(ARCHIVE, dt.datetime.now().strftime("%Y%m%dT%H%M%S_") + os.path.basename(f)))
+
+    # Anything still sitting here matched no handler. Saying so is the whole
+    # point: a mis-named export used to leave "ingested: 0" and no clue why.
+    leftover = sorted(
+        q for q in glob.glob(os.path.join(INBOX, "*"))
+        if os.path.isfile(q) and q not in handled
+        and os.path.basename(q) not in (".gitkeep", ".DS_Store")
+    )
+    if leftover:
+        names = ", ".join(os.path.basename(q) for q in leftover)
+        files.append(f"IGNORED x{len(leftover)} (no handler): {names}")
+        _log(c, "inbox", "warn", 0, f"unrecognised files left in inbox: {names}")
+
     _log(c, "inbox", "ok", total, "; ".join(files) or "no files")
     return total, files
 
