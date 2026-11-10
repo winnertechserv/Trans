@@ -501,9 +501,9 @@ async function loadMarket(){
   MKT=STATE.ov.market||MKT;
   const o=STATE.ov.overall,h=STATE.ov.health;
   // Money still in, money already out, and what each earned — kept apart. A single
-  // "Invested" figure reads as a collapse the moment you have sold anything: India shows
-  // 1.92cr bought against 41L held, and the 1.68cr that came back out has to be visible
-  // for the rest to make sense. Realised + unrealised + dividends reconstructs Net
+  // "Invested" figure reads as a collapse the moment you have sold anything: a market
+  // where 100 went in, 20 is still held and 85 came back out looks like an 80% loss
+  // unless the 85 is visible alongside. Realised + unrealised + dividends reconstructs Net
   // gain/loss exactly, which is the arithmetic check that nothing is double counted.
   const px=(v)=>v==null?'<span class="na">n/a</span>':`<span class="${sign(v)}">${spct(v)}</span>`;
   const gain=(v)=>`<span class="${sign(v)}">${susd(v)}</span>`;
@@ -703,8 +703,8 @@ function wireAlloc(open){
   bindSort();
 }
 
-// XIRR is an ANNUAL rate, so a short round-trip explodes when annualised: TRIDENT
-// turned Rs960 into Rs1,505 over ten days, which is +57% but 1,362,658,947% a year.
+// XIRR is an ANNUAL rate, so a short round-trip explodes when annualised: a position
+// up 57% in ten days annualises to more than a billion percent a year.
 // True, and useless. Ranking raw XIRR also surfaced positions sold years ago, which are
 // not "movers" in any sense a portfolio dashboard means. So: current holdings only, and
 // only once there is enough time for an annual rate to mean something.
@@ -725,7 +725,7 @@ function heldCell(x){
 }
 
 // The same annualisation problem the movers panel dodges, in the table that shows every
-// row. TRIDENT turned Rs960 into Rs1,505 over ten days: +56.8%, and 1,362,658,947% a year.
+// row. A position up 57% in ten days annualises to more than a billion percent a year.
 // The figure is arithmetically right and worth nothing, and printing it plainly invites
 // exactly the doubt it deserves. Below 90 days held, or above 1000% a year, the cell says
 // n/m and carries the real numbers in its tooltip. Simple return sits in the next column
@@ -952,8 +952,9 @@ function holdings(){
   const all=STATE.ov.results;
   const r=holdRows(all).sort(cmpBy(sortKey,sortDir));
   // Simple sits next to XIRR on purpose: for a position you exited and re-entered they
-  // can disagree wildly, and the pair is the tell. MAZDOCK is +438% annualised and
-  // +18.6% simple, because XIRR weights by time and the first episode was the small one.
+  // can disagree wildly, and the pair is the tell: several hundred percent annualised
+  // against under 20% simple, because XIRR weights by time and the first episode was the
+  // small one.
   // Third entry is the shed-order class: c5 goes first as the screen narrows, c1 last.
   const cols=[['ticker','Ticker',''],['sector_label','Sector','c2'],['xirr','XIRR',''],
     ['simple_return','Simple',''],['weight','Weight','c3'],['invested','Invested','c1'],

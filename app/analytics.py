@@ -162,7 +162,7 @@ def company_names(c):
 
 # A mutual fund has no industry sector, and neither does a gold bond. Leaving them as
 # "Unclassified" buried them among 55 equities under an ISIN nobody recognises, which is
-# how two funds worth Rs1,66,898 became invisible in a table that was displaying them
+# how two funds with real money in them became invisible in a table that was displaying them
 # perfectly well. The asset type IS the useful category for these.
 ASSET_LABEL = {"mf": "Mutual fund", "sgb": "Sovereign gold bond", "bond": "Bond"}
 

@@ -8,6 +8,9 @@ portfolio.db-shm
 *.db-shm
 portfolio.db.pre-restore
 config.json
+# Ad-hoc exports from a broker session: account summary, holdings with cost basis, and
+# transaction history. Personal by construction, whatever the file is called.
+data/
 # Everything dropped in or archived by a sync is raw broker data: tradebook CSVs
 # carrying the account code, and statement PDFs carrying PAN, address and phone. The
 # old rules named only *.json, so CSVs and PDFs sailed straight past them.
