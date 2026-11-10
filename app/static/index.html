@@ -1,67 +1,156 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Portfolio</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0c2140">
+<title>Trans</title>
 <style>
-:root{--bg:#fbfaf9;--panel:#fff;--ink:#1a1a18;--mut:#6b6862;--line:#e6e3de;--acc:#2f6f4f;
---pos:#1a7f4b;--neg:#b3352b;--warn:#8a5a00;--chip:#f2efea}
-@media(prefers-color-scheme:dark){:root{--bg:#161614;--panel:#1e1d1a;--ink:#eceae6;--mut:#9a958c;
---line:#2f2d29;--acc:#6fc296;--pos:#5bbd88;--neg:#e2796d;--warn:#d9a441;--chip:#26241f}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
-font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;gap:20px;
-align-items:baseline;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:5}
-h1{font-size:16px;margin:0;letter-spacing:-.01em}
-.kpis{display:flex;gap:22px;flex-wrap:wrap;margin-left:auto}
-.kpi b{display:block;font-size:19px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.kpi b .pos{color:var(--pos)} .kpi b .neg{color:var(--neg)}
-.kpi b .na{color:var(--mut)}
-.kpi.date b{font-size:13px;font-weight:500;color:var(--mut);padding-top:5px}
-.pxage{display:block;font-size:11px;color:var(--warn);font-weight:500}
-.kpi span{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
-nav{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
-nav button{background:none;border:0;padding:11px 14px;color:var(--mut);cursor:pointer;
-font:inherit;border-bottom:2px solid transparent;white-space:nowrap}
-nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--acc);font-weight:600}
-main{padding:20px 22px 60px;max-width:1280px}
-/* Holdings is a twelve-column table, not prose: it gets whatever the screen has, while
-   the reading-width cap stays for every other tab. Driven by a class rather than :has(),
-   which not every browser this might be opened in will support. */
-main.full{max-width:none}
+/* ── Tokens ────────────────────────────────────────────────────────────────────────
+   Green and red mean gain and loss and nothing else. The accent is blue so that a
+   selected tab, a button or a weight bar can never be read as "this made money" — they
+   used to share one green with --pos, and a losing position's weight bar looked like a
+   winner. Bars take --bar, a quiet tint of the accent, for the same reason.
+   The header band is navy in both themes: one committed colour for the shell, with its
+   own scoped ink, so the page underneath stays neutral and the numbers carry the colour. */
+:root{
+  --page-max:1440px; --gutter:24px;
+  --bg:#f3f5f8; --panel:#fff; --chip:#eceff4; --line:#dfe3ea; --line-strong:#c6cdd8;
+  --ink:#111a27; --mut:#566173;
+  --acc:#1f5fd1; --acc-ink:#fff; --bar:#5a82c9;
+  --pos:#127543; --neg:#bc3128; --warn:#8a5a00;
+  --shell:#0c2140; --shell-ink:#f2f5f9; --shell-mut:#a9b7cb; --shell-line:#ffffff24;
+  --shell-pos:#6ad8a2; --shell-neg:#ff9a94; --shell-acc:#9cc2ff;
+  --tip-bg:#13233a; --tip-ink:#eef2f7;
+  --radius:10px; --radius-sm:7px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0e1116; --panel:#151a21; --chip:#1d232c; --line:#252c36; --line-strong:#38424f;
+  --ink:#e6eaf0; --mut:#9aa6b6;
+  --acc:#7fb1ff; --acc-ink:#06111f; --bar:#5f84bd;
+  --pos:#52cc91; --neg:#f47f7b; --warn:#e4ad52;
+  --shell:#0a1a30;
+  --tip-bg:#e9eef5; --tip-ink:#0d1726;
+}}
+
+/* ── Base ─────────────────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box}
+html{scroll-padding-top:64px;scrollbar-color:var(--line-strong) transparent;
+  -webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text",
+    "Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:color-mix(in srgb,var(--acc) 32%,transparent)}
+a{color:var(--acc);text-underline-offset:3px}
+button,a,input,select,summary{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+code{font:12.5px/1.4 ui-monospace,"SF Mono",Menlo,monospace;background:var(--chip);
+  padding:1px 5px;border-radius:4px}
+.skip{position:absolute;left:12px;top:-60px;z-index:60;background:var(--panel);color:var(--ink);
+  padding:9px 14px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);
+  font-weight:600;text-decoration:none}
+.skip:focus{top:12px}
+
+/* Every band shares one content column, so the left and right edges of the header,
+   the tabs, the page and the footer line up at any width. */
+.top,.kpis,nav,main,footer{padding-inline:max(var(--gutter),calc((100% - var(--page-max)) / 2))}
+/* Holdings and the fundamentals matrix are wide tables: the whole column widens with
+   them rather than just the table, so the edges still agree. */
+body.wide{--page-max:2000px}
+
+/* ── Shell: brand, market, freshness, and the money-flow summary ─────────────────── */
+.shell{background:var(--shell);color:var(--shell-ink);
+  --ink:var(--shell-ink);--mut:var(--shell-mut);--line:var(--shell-line);
+  --line-strong:#ffffff3d;--chip:#ffffff14;--panel:transparent;
+  --pos:var(--shell-pos);--neg:var(--shell-neg);--acc:var(--shell-acc);--acc-ink:#06111f;
+  --warn:#f1c06a}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:14px 10px}
+h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.015em}
+.fresh{margin-left:auto;font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums;
+  display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;cursor:help}
+.pxage{color:var(--warn);font-weight:500}
+
+.kpis{display:flex;flex-wrap:wrap;align-items:stretch;gap:18px 0;padding-block:12px 24px}
+.kpis:empty{min-height:84px}
+.kpi{display:flex;flex-direction:column;gap:2px;min-width:0;border-radius:6px}
+.kpi>.k{font-size:12.5px;color:var(--mut);white-space:nowrap}
+.kpi>b{font-size:18px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;
+  white-space:nowrap;line-height:1.3}
+.kpi .na{color:var(--mut);font-weight:500}
+.kpi.hero{padding-right:32px}
+.kpi.hero>b{font-size:32px;letter-spacing:-.025em;line-height:1.15;margin-top:2px}
+.kpi.hero>.sub{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums;
+  white-space:nowrap;border-radius:4px;align-self:flex-start}
+.kpi.hero>.sub i{font-style:normal;font-weight:400;color:var(--mut)}
+.kgroup{display:flex;gap:26px;padding-inline:26px;border-left:1px solid var(--line);
+  align-items:flex-end}
+.kgroup:last-child{padding-right:0}
+[data-tip]{cursor:help}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────────────────── */
+nav{position:sticky;top:0;z-index:20;display:flex;gap:2px;background:var(--bg);
+  border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav a{display:block;padding:14px 12px 12px;color:var(--mut);text-decoration:none;
+  white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;
+  transition:color .15s ease-out,border-color .15s ease-out}
+nav a:hover{color:var(--ink)}
+nav a[aria-current=page]{color:var(--ink);font-weight:600;border-bottom-color:var(--acc)}
+nav a:focus-visible{outline-offset:-2px}
+nav:focus{outline:none}
+
+main{padding-block:22px 64px;display:block}
+main:focus{outline:none}
+
+/* ── Cards and headings ───────────────────────────────────────────────────────────── */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px 20px;margin-bottom:16px;min-width:0}
+.card h2{font-size:15px;font-weight:650;margin:0 0 14px;letter-spacing:-.01em;
+  text-wrap:balance}
+.card h2 small{font-size:13px;font-weight:400;color:var(--mut);margin-left:8px}
 .card.full{max-width:none}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
-.card h2{font-size:13px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+/* Allocation carries fund names that run to 40+ characters, so it gets the wider column
+   and both children get min-width:0 — without it a grid item refuses to shrink below its
+   content and the table scrolls sideways instead of the name ellipsing. */
+.grid.wide{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr)}
+.grid.wide>*{min-width:0}
+@media (max-width:960px){.grid.wide{grid-template-columns:1fr}}
+
+/* ── Tables ───────────────────────────────────────────────────────────────────────── */
+.wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-th:first-child,td:first-child{text-align:left}
-th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
-cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
-tbody tr:hover{background:var(--chip)}
+th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child,th.txt,td.txt{text-align:left}
+th{color:var(--mut);font-weight:500;font-size:12.5px;position:sticky;top:0;
+  background:var(--panel);vertical-align:bottom}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:color-mix(in srgb,var(--chip) 70%,var(--panel))}
+tfoot th{color:var(--ink);font-weight:600;border-top:1px solid var(--line-strong);border-bottom:0}
+/* Only a sortable header is a button, so only it looks and acts clickable. */
+.sort{display:inline-flex;align-items:center;gap:3px;background:none;border:0;padding:2px 0;
+  margin:-2px 0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap}
+.sort:hover,th[aria-sort] .sort{color:var(--ink)}
+.arw{width:10px;height:10px;flex:none}
+.arw.up{transform:rotate(180deg)}
 .pos{color:var(--pos)}.neg{color:var(--neg)}.mut{color:var(--mut)}
-.ih{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;
-  border:1px solid var(--mut);color:var(--mut);border-radius:50%;font-size:9px;
-  font-style:italic;font-weight:600;cursor:help;vertical-align:middle;margin-left:4px;
-  text-transform:none;letter-spacing:0}
-.ih:hover{border-color:var(--acc);color:var(--acc)}
-/* Marks a cell that is showing a simple return where an annual rate would mislead. */
-.smark{font-size:9px;font-weight:700;color:var(--mut);cursor:help;margin-left:2px;
-  border-bottom:1px dotted var(--mut)}
-#tlog{max-width:min(820px,92vw);width:100%}
-.tr-sell td{background:color-mix(in srgb,var(--warn) 7%,transparent)}
-.tr-lot td{font-size:11px;padding-top:2px;padding-bottom:2px}
-.flowlink{color:var(--acc);text-decoration:none;border-bottom:1px dotted var(--acc)}
-.flowlink:hover{border-bottom-style:solid}
-.cname{font-size:11px;color:var(--mut);font-weight:400;margin-top:1px;max-width:240px;
+.miss{color:var(--mut)}
+
+/* Holding name cells. Names ellipse inside their box instead of running into the next
+   column; the full name and key stay in the tooltip. */
+.fname{display:block;font-weight:600;line-height:1.3;max-width:280px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.cname{font-size:12px;color:var(--mut);font-weight:400;margin-top:1px;max-width:240px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Bound the name itself rather than every first column in the app — report tables and
-   the fundamentals grid share that selector and must not be squeezed. */
-.fname{display:block;font-weight:600;line-height:1.3;cursor:help;max-width:260px}
 /* Holdings carries twelve columns, so a 50-character fund name pushes the numbers off
    screen. Wrap it tighter here and tighten the cell padding; the numeric columns keep
    tabular figures so they still line up. */
-.dense .fname{max-width:170px;font-size:12px}
-.dense .cname{max-width:170px}
-.dense th,.dense td{padding:6px 8px;font-size:12px}
 .dense{table-layout:auto;width:100%}
+.dense th,.dense td{padding:7px 9px;font-size:13px}
+.dense th{font-size:12px}
+/* Fund names get two lines here rather than one, then ellipse; the whole name is in the tooltip. */
+.dense .fname{max-width:200px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical}
+.dense .cname{max-width:190px}
 /* Rather than scroll on a small screen, shed columns in reverse order of usefulness.
    Ticker, XIRR, Simple, Value and Net P/L survive to the narrowest width — those are
    what the table is for; Flows, Held, Divs and Sector are context. */
@@ -69,119 +158,252 @@ tbody tr:hover{background:var(--chip)}
 @media (max-width:1250px){ .dense .c4{display:none} }
 @media (max-width:1050px){ .dense .c3{display:none} }
 @media (max-width:860px){  .dense .c2{display:none} }
-@media (max-width:680px){  .dense .c1{display:none; } .dense .fname,.dense .cname{max-width:120px} }
-.dense td:first-child,.dense th:first-child{position:sticky;left:0;background:var(--panel)}
-.chip.re{background:transparent;border:1px solid var(--warn);color:var(--warn);
-  font-size:10px;cursor:help}
-footer{margin:26px 22px 30px;padding-top:14px;border-top:1px solid var(--line);
-  color:var(--mut);font-size:11px;line-height:1.6;max-width:900px}
-footer b{color:var(--ink)}
-.wrap{overflow-x:auto}
-.bar{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;min-width:60px}
-.bar i{display:block;height:100%;background:var(--acc)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-/* Allocation carries fund names that run to 40+ characters, so it gets the wider column
-   and both children get min-width:0 — without it a grid item refuses to shrink below its
-   content and the table scrolls sideways instead of the name ellipsing. */
-.grid.wide{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr)}
-.grid.wide>*{min-width:0}
-@media (max-width:900px){.grid.wide{grid-template-columns:1fr}}
-.chip{display:inline-block;background:var(--chip);border-radius:99px;padding:1px 9px;
-font-size:11px;color:var(--mut);margin-right:4px}
-pre{background:var(--chip);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;
-white-space:pre-wrap;line-height:1.45;max-height:340px;overflow-y:auto}
-button.act{background:var(--acc);color:#fff;border:0;border-radius:7px;padding:8px 14px;
-cursor:pointer;font:inherit;font-weight:600}
-button.act.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.seg button{background:transparent;border:0;border-right:1px solid var(--line);padding:7px 15px;
-font:inherit;color:var(--mut);cursor:pointer}
+@media (max-width:680px){  .dense .c1{display:none} .dense .fname,.dense .cname{max-width:130px} }
+.dense td:first-child,.dense th:first-child{position:sticky;left:0;background:var(--panel);z-index:1}
+.dense th:first-child{z-index:2}
+
+/* Info marks: a 14px glyph with a 24px hit area, reachable by keyboard and by tap. */
+.ih{position:relative;display:inline-grid;place-items:center;width:14px;height:14px;
+  margin-left:4px;padding:0;border:0;background:none;color:var(--mut);cursor:help;
+  vertical-align:-2px;border-radius:50%;flex:none}
+.ih::before{content:"";position:absolute;inset:-5px}
+.ih svg{width:14px;height:14px}
+.ih:hover,.ih[aria-expanded=true]{color:var(--acc)}
+/* Marks a cell that is showing a simple return where an annual rate would mislead. */
+.smark{font-size:9.5px;font-weight:700;color:var(--mut);cursor:help;margin-left:2px;
+  border-bottom:1px dotted var(--mut)}
+
+/* ── Tooltip ── one element, fixed to the viewport so a table's scroll box cannot
+   clip it. Shown on hover, keyboard focus and tap. */
+#tip{position:fixed;z-index:70;max-width:min(360px,calc(100vw - 24px));padding:9px 12px;
+  border-radius:8px;background:var(--tip-bg);color:var(--tip-ink);font-size:12.5px;
+  line-height:1.5;font-weight:400;letter-spacing:0;text-transform:none;white-space:normal;
+  text-align:left;box-shadow:0 10px 28px -10px #00000066;pointer-events:none}
+#tip[hidden]{display:none}
+
+/* ── Controls ─────────────────────────────────────────────────────────────────────── */
+select,input{font:inherit;height:36px;padding:0 10px;border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);background-color:var(--panel);color:var(--ink);min-width:0}
+input::placeholder{color:var(--mut);opacity:1}
+input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
+input[type=checkbox],input[type=radio]{height:auto}
+button.act{display:inline-flex;align-items:center;gap:6px;min-height:36px;background:var(--acc);
+  color:var(--acc-ink);border:1px solid transparent;border-radius:var(--radius-sm);padding:7px 14px;
+  cursor:pointer;font:inherit;font-weight:600;
+  transition:background-color .15s ease-out,transform .1s ease-out}
+button.act:hover{background:color-mix(in srgb,var(--acc) 86%,var(--ink))}
+button.act:active{transform:translateY(1px)}
+button.act:disabled{opacity:.5;cursor:not-allowed;transform:none}
+button.act.ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+button.act.ghost:hover{background:var(--chip)}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius-sm);
+  overflow:hidden;flex:none}
+.seg button{background:transparent;border:0;border-right:1px solid var(--line-strong);
+  min-height:34px;padding:0 13px;font:inherit;color:var(--mut);cursor:pointer;white-space:nowrap;
+  transition:background-color .15s ease-out,color .15s ease-out}
 .seg button:last-child{border-right:0}
-.seg button[aria-pressed=true]{background:var(--acc);color:#fff;font-weight:600}
-header .seg{margin-left:4px}
-header .seg button{padding:5px 12px;font-size:13px}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 10px}
-.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.seg button:hover{color:var(--ink);background:var(--chip)}
+.seg button[aria-pressed=true]{background:var(--acc);color:var(--acc-ink);font-weight:600}
+.seg button:focus-visible{outline-offset:-3px}
+.top .seg button{min-height:30px;padding:0 12px;font-size:13px}
+.top .seg .cur{opacity:.7;margin-right:5px;font-weight:500}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.row input[type=search]{flex:1;min-width:160px}
+.count{font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}
+.lbl{font-size:12.5px;color:var(--mut)}
+.copy{background:transparent;border:1px solid var(--line-strong);border-radius:6px;
+  padding:3px 10px;font:inherit;font-size:12px;color:var(--mut);cursor:pointer;margin-left:8px}
+.copy:hover{color:var(--ink);background:var(--chip)}
+.flowlink{color:var(--acc);text-decoration:none;border-bottom:1px dotted var(--acc)}
+.flowlink:hover{border-bottom-style:solid}
+
+/* ── Chips, bars, notices ─────────────────────────────────────────────────────────── */
+.chip{display:inline-block;background:var(--chip);border-radius:99px;padding:1px 9px;
+  font-size:11.5px;color:var(--mut);margin-right:4px;font-weight:500;vertical-align:1px}
+.chip.re{background:transparent;border:1px solid color-mix(in srgb,var(--warn) 60%,transparent);
+  color:var(--warn);font-size:11.5px;cursor:help}
+.bar{height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}
+.bar i{display:block;height:100%;background:var(--bar);border-radius:3px}
+/* The icon is positioned, not a flex item, so the message keeps normal inline flow —
+   a bold phrase inside it must not become a column of its own. */
+.banner{position:relative;padding:11px 14px 11px 40px;margin-bottom:14px;
+  border-radius:var(--radius-sm);font-size:13.5px;
+  background:color-mix(in srgb,var(--warn) 11%,var(--panel));
+  border:1px solid color-mix(in srgb,var(--warn) 32%,transparent)}
+.banner::before{content:"";position:absolute;left:14px;top:13px;width:16px;height:16px;background:var(--warn);
+  -webkit-mask:var(--warn-icon) center/contain no-repeat;mask:var(--warn-icon) center/contain no-repeat}
+:root{--warn-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 15 14H1z' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M8 6v3.5M8 11.6v.4' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")}
+.tr-sell td{background:color-mix(in srgb,var(--warn) 7%,transparent)}
+.tr-lot td{font-size:12px;padding-top:2px;padding-bottom:2px}
+pre{background:var(--chip);padding:12px 14px;border-radius:8px;overflow-x:auto;
+  font:12.5px/1.5 ui-monospace,"SF Mono",Menlo,monospace;white-space:pre-wrap;max-height:340px;
+  overflow-y:auto}
 .prhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:0}
-.prhead b{font-size:13px}
-.banner{border-left:3px solid var(--warn);background:var(--chip);padding:10px 14px;
-border-radius:0 8px 8px 0;margin-bottom:14px;font-size:13px}
-select,input{font:inherit;padding:6px 9px;border:1px solid var(--line);border-radius:7px;
-background:var(--panel);color:var(--ink)}
-.day{border-bottom:1px solid var(--line);padding:9px 0}
-.day .h{display:flex;justify-content:space-between;font-weight:600;margin-bottom:5px}
-.tick{display:inline-block;background:var(--chip);border-radius:6px;padding:2px 8px;margin:2px 3px 0 0;font-size:12px}
+  border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:4px}
+.prhead b{font-size:14px}
+.day{border-bottom:1px solid var(--line);padding:10px 0}
+.day:last-child{border-bottom:0}
+.day .h{display:flex;justify-content:space-between;font-weight:600;margin-bottom:6px;
+  font-variant-numeric:tabular-nums}
+.tick{display:inline-block;background:var(--chip);border-radius:6px;padding:2px 8px;
+  margin:3px 4px 0 0;font-size:12.5px;font-variant-numeric:tabular-nums}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);
-max-width:460px;padding:20px}dialog::backdrop{background:#0008}
-.miss{color:var(--mut);font-style:italic}
-.stage{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
-padding:10px 8px 4px;font-weight:600}
+  max-width:min(480px,calc(100vw - 32px));padding:20px;overscroll-behavior:contain;
+  box-shadow:0 24px 60px -24px #00000080}
+dialog::backdrop{background:#0b1220a8}
+#tlog{max-width:min(860px,calc(100vw - 32px));width:100%}
+.stage{font-size:12.5px;color:var(--mut);padding:12px 8px 4px;font-weight:600}
 tr.pending td{opacity:.45}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;
-vertical-align:middle;background:var(--line)}
+  vertical-align:middle;background:var(--line-strong)}
 .dot.run{background:var(--acc);animation:pulse 1.1s ease-in-out infinite}
 .dot.done{background:var(--pos)} .dot.err{background:var(--neg)}
-.dot.skip{background:transparent;border:1px solid var(--line)}
+.dot.skip{background:transparent;border:1px solid var(--line-strong)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-.verdict{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;
-background:var(--chip);border-radius:9px;padding:13px 16px;margin:12px 0}
-.verdict b{display:block;font-size:19px;letter-spacing:-.02em}
-.verdict span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
-.md{line-height:1.6} .md h3{font-size:13px;margin:14px 0 6px}
+.verdict{display:flex;gap:28px;flex-wrap:wrap;align-items:baseline;
+  background:var(--chip);border-radius:9px;padding:14px 16px;margin:12px 0}
+.verdict b{display:block;font-size:19px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.verdict span{font-size:12.5px;color:var(--mut)}
+.md{line-height:1.65;max-width:78ch} .md h3{font-size:14px;margin:18px 0 6px}
 .md p{margin:9px 0} .md ul,.md ol{margin:8px 0;padding-left:22px}
 .md ol li{margin:6px 0} .md li{margin:3px 0}
 .md strong{font-weight:650}
-.rep-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
-.rating{display:inline-block;padding:5px 14px;border-radius:8px;font-weight:700;
-font-size:17px;letter-spacing:-.01em}
-.rating.buy{background:#1a7f4b1f;color:var(--pos);border:1px solid #1a7f4b55}
-.rating.hold{background:#8a5a001f;color:var(--warn);border:1px solid #8a5a0055}
-.rating.sell{background:#b3352b1f;color:var(--neg);border:1px solid #b3352b55}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
-.pill.hi{background:#1a7f4b1f;color:var(--pos)}
-.pill.mid{background:#8a5a001f;color:var(--warn)}
-.pill.lo{background:#b3352b1f;color:var(--neg)}
-.warnw{color:var(--warn)}
 .md table{margin:10px 0;font-size:13px}
-.md th{position:static;background:transparent;cursor:default}
+.md th{position:static;background:transparent}
 .md td,.md th{border-bottom:1px solid var(--line);padding:5px 9px}
 .md td:first-child{text-align:left}
-.copy{background:transparent;border:1px solid var(--line);border-radius:6px;
-padding:2px 9px;font:inherit;font-size:11px;color:var(--mut);cursor:pointer;margin-left:8px}
-.copy:hover{color:var(--ink)}
+.rep-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.rating{display:inline-block;padding:5px 14px;border-radius:8px;font-weight:700;
+  font-size:17px;letter-spacing:-.01em}
+.rating.buy,.pill.hi{background:color-mix(in srgb,var(--pos) 13%,transparent);color:var(--pos)}
+.rating.hold,.pill.mid{background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn)}
+.rating.sell,.pill.lo{background:color-mix(in srgb,var(--neg) 13%,transparent);color:var(--neg)}
+.rating.buy{border:1px solid color-mix(in srgb,var(--pos) 40%,transparent)}
+.rating.hold{border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.rating.sell{border:1px solid color-mix(in srgb,var(--neg) 40%,transparent)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.warnw{color:var(--warn)}
 .dca{background:var(--chip);border-radius:9px;padding:14px 16px;margin:12px 0}
-.dca h4{margin:0 0 9px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.dca h4{margin:0 0 9px;font-size:13px;font-weight:600;color:var(--mut)}
 .dca .g{display:flex;gap:24px;flex-wrap:wrap}
-.dca b{display:block;font-size:16px;letter-spacing:-.02em}
-.dca span{font-size:11px;color:var(--mut)}
-summary{display:flex;align-items:center;gap:8px;list-style:none}
+.dca b{display:block;font-size:16px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.dca span{font-size:12px;color:var(--mut)}
+summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;min-height:36px}
 summary::-webkit-details-marker{display:none}
-.chev{display:inline-block;width:13px;color:var(--mut);transition:transform .12s;flex:none}
+.chev{display:inline-block;width:13px;color:var(--mut);transition:transform .15s ease-out;flex:none}
 details[open] .chev{transform:rotate(90deg)}
 details{border:1px solid var(--line);border-radius:8px;padding:4px 12px;background:var(--panel)}
 details[open]{padding-bottom:10px}
 .secbtns{margin-left:auto;display:flex;gap:6px;align-items:center}
+.note{font-size:12.5px;color:var(--mut);margin:10px 0 0;line-height:1.55;max-width:110ch}
+.empty{padding:22px 4px;color:var(--mut)}
+.empty b{color:var(--ink)}
+
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.best{font-weight:650}
+button.flowlink{background:none;border:0;border-bottom:1px dotted var(--acc);padding:0;
+  font:inherit;color:var(--acc);cursor:pointer}
+.fresh .pxage{margin-left:8px}
+/* Loading placeholders: the shape of what is coming, not a word in the corner. */
+.sk{display:block;height:12px;border-radius:6px;background:var(--chip);
+  background-image:linear-gradient(90deg,transparent,color-mix(in srgb,var(--panel) 55%,transparent),transparent);
+  background-size:200% 100%;background-repeat:no-repeat;animation:sk 1.3s ease-in-out infinite}
+.sk+.sk{margin-top:12px}
+.sk.h{height:16px;width:28%;margin-bottom:18px}
+@keyframes sk{from{background-position:150% 0}to{background-position:-50% 0}}
+
+footer{margin:8px 0 34px;padding-top:16px;color:var(--mut);font-size:12px;line-height:1.6}
+footer p{margin:0;max-width:96ch;border-top:1px solid var(--line);padding-top:14px}
+footer b{color:var(--ink)}
+
+/* ── Narrow screens ───────────────────────────────────────────────────────────────── */
+/* One row needs ~1400px. Below that, a flex row would wrap one group onto a ragged
+   second line, so the band switches to a deliberate layout: the value on the left, and
+   capital, banked and rates as three aligned rows beside it. */
+@media (max-width:1400px){
+  .kpis{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px 0;align-items:start}
+  .kpi.hero{grid-row:1/span 3;align-self:stretch;padding-right:32px;margin-right:32px;
+    border-right:1px solid var(--line)}
+  .kgroup{display:grid;grid-template-columns:repeat(4,minmax(0,180px));gap:12px 24px;
+    padding:0;border:0;align-items:start}
+  .kpi>b{font-size:17px}
+}
+@media (max-width:720px){
+  :root{--gutter:16px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;padding-block:6px 18px}
+  .kpi.hero{grid-row:auto;grid-column:1/-1;margin:0 0 4px;padding-right:0;border-right:0}
+  .kgroup{display:contents}
+  .kpi.hero>b{font-size:28px}
+  .kpi>.k{font-size:12px}
+  .kpi>b{font-size:15.5px}
+  .top{padding-block:12px 6px}
+  .fresh{margin-left:0;width:100%}
+  .card{padding:14px 14px;border-radius:9px}
+  nav a{padding:13px 10px 11px}
+  .card h2 small{display:block;margin:2px 0 0}
+}
+/* iOS zooms into any field under 16px when it takes focus. */
+@media (pointer:coarse){ select,input{font-size:16px;height:40px} .seg button{min-height:40px} }
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:0s!important}
+  .sk,.dot.run{animation:none}
+}
 </style></head><body>
-<header><h1>Trans</h1><span class="seg" id="mkt"></span><div class="kpis" id="kpis"></div></header>
-<nav id="nav"></nav><main id="main">loading…</main>
-<footer>
+<a class="skip" href="#main">Skip to content</a><a class="skip" href="#nav">Skip to sections</a>
+<div class="shell">
+  <header class="top"><h1>Trans</h1><span class="seg" id="mkt" role="group" aria-label="Market"></span>
+    <span class="fresh" id="fresh"></span></header>
+  <section class="kpis" id="kpis" aria-label="Portfolio summary"></section>
+</div>
+<nav id="nav" aria-label="Sections" tabindex="-1"></nav>
+<main id="main" tabindex="-1"><div class="card" aria-busy="true"><span class="sk h"></span><span class="sk"></span><span class="sk" style="width:86%"></span><span class="sk" style="width:72%"></span></div></main>
+<footer><p>
   <b>Not investment advice.</b> Figures are computed from data you supplied and can be
   wrong — verify anything that matters against your broker's own statements. Trans is not
   affiliated with any broker. Provided as is, without warranty.
   <span class="mut">Apache-2.0</span>
-</footer>
+</p></footer>
+<div id="tip" role="tooltip" hidden></div>
 <dialog id="consent"></dialog>
-<dialog id="tlog"></dialog>
+<dialog id="tlog" aria-label="Trade history"></dialog>
 <script>
 const $=s=>document.querySelector(s);
 let MKT={key:'us',symbol:'$',locale:'en-US',currency:'USD',label:'US',flag:'🇺🇸'};
 const fmt=(n,d=0)=>n==null?'—':n.toLocaleString(MKT.locale,{minimumFractionDigits:d,maximumFractionDigits:d});
 // Amounts are always in the selected market's own currency — the two are never summed
 // or converted, so this only ever needs to format, never to translate a value.
-const usd=(n,d=0)=>n==null?'—':MKT.symbol+fmt(n,d);
-const pct=(n,d=2)=>n==null?'—':(n*100).toFixed(d)+'%';
+// Negatives carry a true minus ahead of the symbol: "−$221", never "$-221".
+const MINUS='−';
+const usd=(n,d=0)=>n==null?'—':(n<0?MINUS:'')+MKT.symbol+fmt(Math.abs(n),d);
+const pct=(n,d=2)=>n==null?'—':(n<0?MINUS:'')+Math.abs(n*100).toFixed(d)+'%';
+// Signed variants for gains and rates, where colour alone must not carry the meaning:
+// a gain reads "+$1,470" so it survives colour blindness, a greyscale print and a glance.
+// Anything that rounds to zero at the shown precision is unsigned: "+$0" says nothing.
+const rz=(n,d)=>Math.abs(n)<0.5*10**-d;
+const susd=(n,d=0)=>n==null?'—':rz(n,d)?usd(0,d):(n>0?'+':'')+usd(n,d);
+const spct=(n,d=2)=>n==null?'—':rz(n*100,d)?pct(0,d):(n>0?'+':'')+pct(n,d);
 const sign=n=>n==null?'mut':n>=0?'pos':'neg';
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const ICON={
+  info:'<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 7.2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="4.9" r=".95" fill="currentColor"/></svg>',
+  arw:'<svg class="arw" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+// A sortable column header: the label is a real button, so it is reachable by Tab and
+// fires on Enter and Space, and aria-sort tells a screen reader which way the column
+// runs. The info mark sits outside the button so asking what a column means never
+// re-sorts it.
+function sortTh(attr,k,label,curKey,curDir,{cls='',tip=''}={}){
+  const on=curKey===k;
+  return `<th class="${cls}"${on?` aria-sort="${curDir<0?'descending':'ascending'}"`:''}>`
+    +`<button type="button" class="sort" data-${attr}="${k}"${tip?` data-tip="${esc(tip)}"`:''}>`
+    +`${label}${on?ICON.arw.replace('class="arw"',`class="arw${curDir<0?'':' up'}"`):''}</button>`
+    +`${ih(k)}</th>`;
+}
+// The shape of a loading screen, so nothing jumps when the data lands.
+const skel=(rows=4)=>`<div class="card" aria-busy="true"><span class="sk h"></span>`
+  +Array.from({length:rows},(_,i)=>`<span class="sk" style="width:${[100,88,94,76,82][i%5]}%"></span>`).join('')
+  +`</div>`;
 const get=u=>fetch(u).then(r=>r.json());
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(b||{})}).then(r=>r.json());
@@ -208,6 +430,9 @@ const TABS=[['overview','Overview','/'],['holdings','Holdings','/holdings'],
  ['research','Research','/research'],['sync','Sync & cost','/sync']];
 const PATH_OF=Object.fromEntries(TABS.map(([k,,p])=>[k,p]));
 let tab='overview';
+// Market labels for the switch before /api/markets answers. The currency sign leads
+// because it is what actually differs between the two views.
+const MKT_SIGN={us:'$',in:'₹'};
 
 // Two tabs carry a ticker in the URL (/fundamentals/MSFT, /research/MSFT) so a
 // specific holding or report can be linked to directly.
@@ -242,7 +467,7 @@ async function applyRoute(r,{push=false,replace=false}={}){
     await loadMarket(); }
   if(r.tab==='fund' && r.ticker) STATE.fundTicker=r.ticker;
   if(r.tab==='research') STATE.openReport=r.ticker||null;
-  [...$('#nav').children].forEach(b=>b.setAttribute('aria-selected',b.dataset.t===tab));
+  drawNav();
   document.title = tab==='overview' ? `Trans · ${MKT.label}`
     : `Trans · ${MKT.label} · ${(TABS.find(x=>x[0]===tab)||[])[1]}${r.ticker?' · '+r.ticker:''}`;
   const u=urlFor(r.tab,r.ticker,r.market);
@@ -254,9 +479,21 @@ async function applyRoute(r,{push=false,replace=false}={}){
 function go(t,ticker){ applyRoute({market:STATE.market,tab:t,ticker:ticker||null},{push:true}); }
 function goMarket(m){ setPref('market',m); applyRoute({market:m,tab:tab,ticker:null},{push:true}); }
 
-$('#nav').innerHTML=TABS.map(([k,l,p])=>
-  `<button data-t="${k}" aria-selected="${k===tab}">${l}</button>`).join('');
-$('#nav').onclick=e=>{const t=e.target.dataset.t; if(!t)return; go(t,null);};
+// Tabs are links: each has a real URL, so Cmd/Ctrl-click and middle-click open a section
+// in a new tab and the address can be copied. A plain click stays in the page.
+function drawNav(){
+  $('#nav').innerHTML=TABS.map(([k,l])=>
+    `<a href="${urlFor(k,null)}" data-t="${k}"${k===tab?' aria-current="page"':''}>${esc(l)}</a>`).join('');
+}
+// Mark the tab the URL names straight away, before any data has loaded — otherwise a
+// deep link to /holdings shows Overview highlighted for the second the fetch takes.
+tab=routeFrom(location.pathname).tab;
+drawNav();
+$('#nav').onclick=e=>{
+  const a=e.target.closest('a[data-t]'); if(!a) return;
+  if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||e.button!==0) return;
+  e.preventDefault(); go(a.dataset.t,null);
+};
 window.addEventListener('popstate',e=>applyRoute(e.state||routeFrom(location.pathname)));
 
 async function loadMarket(){
@@ -268,46 +505,46 @@ async function loadMarket(){
   // 1.92cr bought against 41L held, and the 1.68cr that came back out has to be visible
   // for the rest to make sense. Realised + unrealised + dividends reconstructs Net
   // gain/loss exactly, which is the arithmetic check that nothing is double counted.
-  const px=(v)=>v==null?'<span class="na">n/a</span>':`<span class="${sign(v)}">${pct(v)}</span>`;
-  const gain=(v)=>`<span class="${sign(v)}">${usd(v)}</span>`;
-  $('#kpis').innerHTML=[
-    ['Current value',usd(o.market_value),'Shares held now × the latest price'],
-    ['Currently invested',usd(o.cost_basis),
+  const px=(v)=>v==null?'<span class="na">n/a</span>':`<span class="${sign(v)}">${spct(v)}</span>`;
+  const gain=(v)=>`<span class="${sign(v)}">${susd(v)}</span>`;
+  const K=Object.fromEntries([
+    ['value','Current value',usd(o.market_value),'Shares held now × the latest price'],
+    ['cost','Currently invested',usd(o.cost_basis),
      'What the shares you still hold actually cost. Zerodha reports a split-adjusted '
      +'average; for Robinhood it is weighted-average cost off the order history.'],
-    ['Unrealized gain',gain(o.unrealized),'Current value less what those shares cost — on paper, not banked'],
-    ['Total invested',usd(o.invested),'Every unit of currency ever spent buying. Not reduced by sales.'],
-    ['Total sold',usd(o.proceeds),'Lifetime cash out of sales'],
+    ['unreal','Unrealized gain',gain(o.unrealized),'Current value less what those shares cost — on paper, not banked'],
+    ['invested','Total invested',usd(o.invested),'Every unit of currency ever spent buying. Not reduced by sales.'],
+    ['sold','Total sold',usd(o.proceeds),'Lifetime cash out of sales'],
     // Realised only, on purpose: money actually banked. Unrealized gain sits in its own
     // figure and the two are deliberately not added up here — adding them is what
     // "Net gain/loss" used to do, and it blurred earned with hoped-for.
-    ['Realized gain/loss',gain(o.realized+o.dividends),
+    ['banked','Realized gain/loss',gain(o.realized+o.dividends),
      `Money actually banked: ${usd(o.realized)} profit on shares sold plus ${usd(o.dividends)} `
      +`in dividends. Excludes the ${usd(o.unrealized)} of unrealized gain on what you still hold.`],
-    ['Dividends',usd(o.dividends,2),
+    ['divs','Dividends',usd(o.dividends,2),
      'US: reconstructed from DRIP reinvestment orders, so cash dividends are invisible. '
      +'India: 0 because the Zerodha tradebook carries no dividend rows.'],
     // Four slices of the same flows. Each is a real XIRR over its own subset, never an
     // average of the others — which is why they do not add up to the net figure and are
     // not meant to.
-    ['Unrealized XIRR',px(o.xirr_open),
+    ['xopen','Unrealized XIRR',px(o.xirr_open),
      `Only what you still hold — ${o.n_open||0} position${o.n_open===1?'':'s'}, valued at `
      +`today's price as a final inflow. Closed round-trips are excluded, so this is how `
      +`the things you own are actually doing.`],
-    ['Realized XIRR',px(o.xirr_closed),
+    ['xclosed','Realized XIRR',px(o.xirr_closed),
      `Only positions you have fully sold — ${o.n_closed||0} of them. What the money you `
      +`took back out actually earned while it was deployed.`],
-    ['Net XIRR',px(o.xirr),
+    ['xnet','Net XIRR',px(o.xirr),
      'Every trade ever made, open and closed together. The headline, and the one most '
      +'dragged around by short round-trips, because the rate is annualised.'],
-    ['XIRR 1Y',px(o.xirr_1y),
+    ['x1y','XIRR 1Y',px(o.xirr_1y),
      `Positions OPENED in the last 365 days — ${o.n_1y||0} of them, whether since sold or `
      +`still held. Counted that way rather than by every flow landing in the window, `
      +`because a sale whose purchase predates it would bring proceeds with none of the `
      +`cost and read as a spectacular year.`],
     // Two different ages, and conflating them hid a month-old fund NAV behind a
     // one-day-old trade. Transactions lead; prices are named underneath when they lag.
-    ['Data through',
+    ['fresh','Data through',
      (h.last_transaction_date
         ? h.last_transaction_date+(h.days_stale>1?` (${h.days_stale}d old)`:'')
         : 'holdings only')
@@ -317,11 +554,26 @@ async function loadMarket(){
           + h.prices.map(p=>`${p.asset} ${p.days}d ago`).join(', ')
           + '. Transactions and prices age separately — a recent trade does not mean '
           + 'current prices.'
-        : null,
-     'date']
-  ].map(([s,v,t,cls])=>`<div class="kpi${cls?' '+cls:''}"`
-      +`${t?` title="${String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"`:''}>`
-      +`<span>${s}</span><b>${v}</b></div>`).join('');
+        : null]
+  ].map(([k,...r])=>[k,r]));
+  // Read as one sentence, left to right: what it is worth now and what that is up on
+  // paper; the capital that went in, came back out, and is still in; what was banked;
+  // and what all of it earned a year. Each figure keeps its own definition on hover,
+  // focus or tap. A figure is focusable only because its definition is the point —
+  // these numbers are easy to misread without one.
+  const tipA=t=>t?` tabindex="0" data-tip="${esc(t)}"`:'';
+  const one=(k,cls='')=>{const [l,v,t]=K[k];
+    return `<div class="kpi${cls}"${tipA(t)}><span class="k">${l}</span><b>${v}</b></div>`;};
+  const group=(label,ks)=>`<div class="kgroup" role="group" aria-label="${label}">${ks.map(k=>one(k)).join('')}</div>`;
+  const [vl,vv,vt]=K.value, [,,ut]=K.unreal;
+  $('#kpis').innerHTML=
+     `<div class="kpi hero"${tipA(vt)}><span class="k">${vl}</span><b>${vv}</b>`
+    +`<span class="sub ${sign(o.unrealized)}"${tipA(ut)}>${susd(o.unrealized)} <i>unrealized</i></span></div>`
+    +group('Capital',['invested','sold','cost'])
+    +group('Banked',['banked','divs'])
+    +group('Annualised returns',['xnet','xopen','xclosed','x1y']);
+  const [fl,fv,ft]=K.fresh;
+  $('#fresh').innerHTML=`<span${tipA(ft)}>${fl} ${fv}</span>`;
   [...$('#mkt').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===STATE.market));
 }
 
@@ -330,14 +582,16 @@ async function boot(){
   STATE.market=routeFrom(location.pathname).market||pref('market',null)||mi.default;
   $('#mkt').innerHTML=mi.markets.map(m=>
     `<button data-m="${m.key}" aria-pressed="${m.key===STATE.market}"
-      title="${m.currency}">${m.flag} ${m.label}</button>`).join('');
+      aria-label="${esc(m.label)} portfolio, ${esc(m.currency)}"><span class="cur" aria-hidden="true">${MKT_SIGN[m.key]||''}</span>${esc(m.label)}</button>`).join('');
   $('#mkt').onclick=e=>{const m=e.target.closest('button')?.dataset.m; if(m&&m!==STATE.market) goMarket(m);};
   await loadMarket();
   applyRoute(routeFrom(location.pathname),{replace:true});   // deep link / refresh
 }
 function render(){
-  // Wide tables, not prose.
-  $('#main').classList.toggle('full', tab==='holdings'||(tab==='fund'&&fundView==='matrix'));
+  // Wide tables, not prose. The class sits on <body> so the header, tabs, page and footer
+  // all widen together and their edges keep agreeing.
+  hideTip();
+  document.body.classList.toggle('wide', tab==='holdings'||(tab==='fund'&&fundView==='matrix'));
   ({overview,holdings,buys,div:divs,analysis,fund,research,sync:syncv}[tab])();
 }
 
@@ -370,19 +624,20 @@ function overview(){
   <div class="grid wide">
    <div class="card"><h2>Allocation</h2>
     <div class="row">
-     <input id="aq" placeholder="Search name, ticker or category" value="${allocQ}" style="flex:1;min-width:150px">
-     <select id="asec">${['',...[...new Set(open.map(p=>p.sector_label))].sort()]
+     <input id="aq" type="search" placeholder="Search name, ticker or category…" value="${esc(allocQ)}"
+       aria-label="Search allocation" autocomplete="off" spellcheck="false">
+     <select id="asec" aria-label="Filter by category">${['',...[...new Set(open.map(p=>p.sector_label))].sort()]
        .map(v=>`<option value="${v}"${v===allocSec?' selected':''}>${v||'All categories'}</option>`).join('')}</select>
     </div>
     <div id="atab">${allocTable(open)}</div></div>
    <div class="card"><h2>Snapshot</h2><table><tbody>
      <tr><td>Positions</td><td>${open.length}</td></tr>
      <tr><td>Transactions</td><td>${fmt(h.n_transactions)}</td></tr>
-     <tr><td>Simple return</td><td class="${sign(o.simple_return)}">${pct(o.simple_return)}</td></tr>
+     <tr><td>Simple return</td><td class="${sign(o.simple_return)}">${spct(o.simple_return)}</td></tr>
      <tr><td>First activity</td><td>${o.first}</td></tr>
      <tr><td>Fundamentals loaded</td><td>${h.n_fundamentals} tickers</td></tr>
    </tbody></table>
-   <h2 style="margin-top:18px">Top movers by XIRR</h2>
+   <h2 style="margin-top:22px">Top movers by XIRR</h2>
    ${movers(r)}</div></div>`;
   wireAlloc(open);
 }
@@ -409,37 +664,40 @@ function allocRows(open){
 function label(p){
   const synthetic = p.asset==='mf' || /^(PM\d|INF[0-9A-Z]{9})/.test(p.ticker);
   if(synthetic && p.name)
-    return `<b class="fname" title="${p.ticker}">${p.name}</b>`;
-  return `<b>${p.ticker}</b>${p.name?`<div class="cname">${p.name}</div>`:''}`;
+    return `<b class="fname" data-tip="${esc(p.name)} (${esc(p.ticker)})">${esc(p.name)}</b>`;
+  return `<b>${esc(p.ticker)}</b>${p.name?`<div class="cname">${esc(p.name)}</div>`:''}`;
 }
 
 function allocTable(open){
   const rows=allocRows(open);
-  if(!rows.length) return `<p class="mut">Nothing matches that filter.</p>`;
+  if(!rows.length) return `<p class="empty"><b>No positions match.</b> Clear the search or
+    choose All categories to see all ${open.length}.</p>`;
   const mx=Math.max(...rows.map(p=>p.market_value))||1;
   const shown=rows.reduce((s,p)=>s+p.market_value,0), all=open.reduce((s,p)=>s+p.market_value,0);
   const cols=[['ticker','Ticker'],['sector_label','Category'],['market_value','Value'],
               ['weight','Weight'],['xirr','XIRR']];
   return `<div class="wrap"><table><thead><tr>${cols.map(([k,l])=>
-      `<th data-ak="${k}">${l}${allocKey===k?(allocDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}<th></th></tr></thead>
+      sortTh('ak',k,l,allocKey,allocDir,{cls:k==='sector_label'?'txt':''})).join('')}<th><span class="sr">Share of largest</span></th></tr></thead>
     <tbody>${rows.map(p=>`<tr>
      <td>${label(p)}</td>
-     <td class="mut">${p.sector_label}</td>
+     <td class="mut txt">${p.sector_label}</td>
      <td>${usd(p.market_value)}</td><td>${pct(p.weight,1)}</td>
      <td>${xirrCell(p)}</td>
-     <td style="width:26%"><div class="bar"><i style="width:${p.market_value/mx*100}%"></i></div></td>
+     <td style="width:24%"><div class="bar" aria-hidden="true"><i style="width:${p.market_value/mx*100}%"></i></div></td>
      </tr>`).join('')}</tbody></table></div>
-    <p class="mut" style="font-size:11px;margin-top:8px">${rows.length} of ${open.length} positions`
+    <p class="note">${rows.length} of ${open.length} positions`
     +(rows.length<open.length?` — ${usd(shown)} of ${usd(all)}`:'')+`</p>`;
 }
 function wireAlloc(open){
   const bindSort=()=>{$('#atab').querySelector('thead')?.addEventListener('click',e=>{
-    const k=e.target.dataset.ak; if(!k)return;
+    const k=e.target.closest('[data-ak]')?.dataset.ak; if(!k)return;
     if(k===allocKey)allocDir*=-1;
     else{allocKey=k; allocDir=(k==='ticker'||k==='sector_label')?1:-1;}
     setPref('allocKey',allocKey); setPref('allocDir',allocDir);
     redraw();});};
-  const redraw=()=>{$('#atab').innerHTML=allocTable(open); bindSort();};
+  const redraw=()=>{const f=document.activeElement?.dataset?.ak;
+    $('#atab').innerHTML=allocTable(open); bindSort();
+    if(f) $('#atab').querySelector(`[data-ak="${f}"]`)?.focus();};
   $('#aq').oninput=e=>{allocQ=e.target.value; setPref('allocQ',allocQ); redraw();};
   $('#asec').onchange=e=>{allocSec=e.target.value; setPref('allocSec',allocSec); redraw();};
   bindSort();
@@ -481,7 +739,7 @@ function xirrOK(x){
 function xirrCell(x){
   if(x.xirr==null)
     return `<span class="mut" title="${(x.note||'no rate').replace(/"/g,'&quot;')}">—</span>`;
-  if(xirrOK(x)) return `<span class="${sign(x.xirr)}">${pct(x.xirr,1)}</span>`;
+  if(xirrOK(x)) return `<span class="${sign(x.xirr)}">${spct(x.xirr,1)}</span>`;
   // Rather than withhold the cell, fall back to the one figure that stays true over any
   // period — the simple return — and mark it, so the column is never silently comparing
   // an annual rate against a nine-day one.
@@ -494,8 +752,8 @@ function xirrCell(x){
       +`the holding.`
     : `Simple return, not annualised — the money-weighted rate is ${pct(x.xirr,1)}, above `
       +`1000% a year, which reflects capital deployed briefly rather than performance.`;
-  return `<span class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</span>`
-    +`<sup class="smark" title="${t.replace(/"/g,'&quot;')}">s</sup>`;
+  return `<span class="${sign(x.simple_return)}">${spct(x.simple_return,1)}</span>`
+    +`<sup class="smark" tabindex="0" data-tip="${esc(t)}">s</sup>`;
 }
 // Sorting has to agree with what is shown. An annual rate and a simple return are not
 // comparable, so rows showing one are never interleaved with rows showing the other:
@@ -524,12 +782,12 @@ function movers(r){
   const skipped=r.filter(x=>x.xirr!=null).length-ok.length;
   if(!ok.length) return `<p class="mut">No holding has been open ${MOVER_MIN_DAYS} days yet.</p>`;
   const row=x=>`<tr><td>${x.ticker}${reChip(x)}</td>`
-              +`<td class="${x.xirr>=0?'pos':'neg'}">${pct(x.xirr,1)}</td>`
-              +`<td class="mut" style="text-align:right;font-size:11px">`
+              +`<td class="${x.xirr>=0?'pos':'neg'}">${spct(x.xirr,1)}</td>`
+              +`<td class="mut" style="font-size:12px">`
               +`${x.days_held==null?'~':''}${Math.round(heldDays(x)/30)}mo held</td></tr>`;
   const top=ok.slice(0,5), bot=ok.slice(-5).filter(x=>!top.includes(x)).reverse();
   return `<table><tbody>${top.map(row).join('')}${bot.map(row).join('')}</tbody></table>`
-    +`<p class="mut" style="margin-top:6px;font-size:11px">Open holdings, ${MOVER_MIN_DAYS}+ days`
+    +`<p class="note">Open holdings, ${MOVER_MIN_DAYS}+ days`
     +` actually holding shares.`
     +(skipped?` ${skipped} excluded — closed or too recent to annualise.`:'')
     +` A re-entered position's rate is set mostly by its first episode.</p>`;
@@ -548,7 +806,7 @@ const INFO={
    +"P/E is omitted for REITs and MLPs. Set by hand in config; 'Unclassified' means "
    +"nobody has mapped it yet.",
  xirr:"Where annualising cannot mean anything — under 90 days held, or above 1000% a "
-   +"year — the cell shows the SIMPLE return instead, marked with a small s. Hover it for "
+   +"year — the cell shows the SIMPLE return instead, marked with a small s. Hover or tap it for "
    +"the annualised figure and why it is not shown. "
    +"Money-weighted annual return: solves for the rate that makes every buy (cash out), "
    +"sell (cash in), dividend and today's holding value discount back to zero, on a "
@@ -578,8 +836,50 @@ const INFO={
    +"holding value as a final flow. Two or three flows make for a fragile rate.",
 };
 function ih(k){
-  const t=INFO[k]; return t?` <span class="ih" title="${t.replace(/"/g,'&quot;')}">i</span>`:'';
+  const t=INFO[k]; if(!t) return '';
+  return `<button type="button" class="ih" aria-label="What this column means" data-tip="${esc(t)}">${ICON.info}</button>`;
 }
+
+// ── Tooltips ─────────────────────────────────────────────────────────────────────────
+// The definitions on this page are the difference between reading a number right and
+// wrong, and a native title= tooltip only ever reaches a mouse that waits a second. One
+// tooltip element serves every [data-tip] — and any legacy [title], which is adopted on
+// first contact so the browser's own bubble never doubles it — on hover, on keyboard
+// focus, and on tap. It is fixed to the viewport, so a table's scroll box cannot clip it.
+const TIP=$('#tip'); let tipFor=null;
+function tipText(el){
+  if(el.hasAttribute('title')){ el.dataset.tip=el.getAttribute('title'); el.removeAttribute('title'); }
+  return (el.dataset.tip||'').replace(/\s+/g,' ').trim();
+}
+function showTip(el){
+  const t=tipText(el); if(!t) return hideTip();
+  if(tipFor && tipFor!==el) tipFor.removeAttribute('aria-describedby');
+  tipFor=el; TIP.textContent=t; TIP.hidden=false; el.setAttribute('aria-describedby','tip');
+  if(el.classList.contains('ih')) el.setAttribute('aria-expanded','true');
+  const r=el.getBoundingClientRect(), w=TIP.offsetWidth, h=TIP.offsetHeight, m=10;
+  let x=Math.min(Math.max(m, r.left+r.width/2-w/2), innerWidth-w-m);
+  let y=r.bottom+8; if(y+h>innerHeight-m) y=Math.max(m, r.top-h-8);
+  TIP.style.left=x+'px'; TIP.style.top=y+'px';
+}
+function hideTip(){
+  if(tipFor){ tipFor.removeAttribute('aria-describedby'); tipFor.removeAttribute('aria-expanded'); }
+  tipFor=null; TIP.hidden=true;
+}
+const tipTarget=e=>e.target.closest?.('[data-tip],[title]');
+document.addEventListener('pointerover',e=>{
+  if(e.pointerType!=='mouse') return;
+  const el=tipTarget(e); if(el) showTip(el); else if(tipFor) hideTip();
+});
+document.addEventListener('focusin',e=>{ const el=tipTarget(e); if(el) showTip(el); else hideTip(); });
+document.addEventListener('focusout',()=>hideTip());
+// Touch and pen: a tap on a defined term toggles its definition; a tap elsewhere closes it.
+document.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse') return;
+  const el=tipTarget(e);
+  if(el && el!==tipFor) showTip(el); else hideTip();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') hideTip(); });
+addEventListener('scroll',()=>{ if(tipFor) hideTip(); },{passive:true,capture:true});
 
 // Every trade in one ticker, with each sale showing the buys it actually sold. Matching
 // is FIFO — oldest shares first — which is the intuitive reading of "which purchase did
@@ -598,32 +898,33 @@ async function showTrades(ticker){
       <td>${money(r.amount)}</td>
       <td class="mut">${fmt(r.running,r.running%1?3:0)}</td>
       <td class="${r.realized==null?'mut':sign(r.realized)}">${
-        r.type==='sell'?(r.realized==null?'—':money(r.realized)):''}</td></tr>`;
+        r.type==='sell'?(r.realized==null?'—':susd(r.realized)):''}</td></tr>`;
     const lots=(r.matched||[]).map(m=>`<tr class="tr-lot"><td colspan="2" class="mut">
         ↳ sold shares bought ${m.date}</td>
       <td class="mut">${fmt(m.quantity,m.quantity<10?3:0)}</td>
       <td class="mut">${money(m.price)}</td>
       <td class="mut">held ${m.held_days}d</td><td></td>
-      <td class="${sign(m.gain)}">${money(m.gain)}</td></tr>`).join('');
+      <td class="${sign(m.gain)}">${susd(m.gain)}</td></tr>`).join('');
     const un=r.unmatched?`<tr class="tr-lot"><td colspan="7" class="mut">
         ↳ ${fmt(r.unmatched,3)} units had no purchase on record — a split, or shares from a
         demerger. Realised is withheld rather than computed from a partial cost.</td></tr>`:'';
     return head+lots+un;
   }).join('');
-  const openLots=d.open_lots.length?`<p class="mut" style="font-size:11px;margin-top:10px">
+  const openLots=d.open_lots.length?`<p class="note">
      Still held, oldest first: ${d.open_lots.map(l=>
        `${fmt(l.quantity,l.quantity<10?3:0)} @ ${usd(l.price)} from ${l.date}`).join(' · ')}</p>`:'';
   $('#tlog').innerHTML=`<div class="prhead">
-     <div><b>${d.name||d.ticker}</b>${d.name?`<div class="cname">${d.ticker}</div>`:''}</div>
-     <button class="act ghost" id="tclose">Close</button></div>
+     <div><b id="tltitle">${esc(d.name||d.ticker)}</b>${d.name?`<div class="cname">${esc(d.ticker)}</div>`:''}</div>
+     <button type="button" class="act ghost" id="tclose">Close</button></div>
    <div class="wrap" style="max-height:60vh;overflow:auto"><table class="dense"><thead><tr>
      <th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Amount</th>
      <th>Holding</th><th>Realised</th></tr></thead><tbody>${rows}</tbody></table></div>
    ${openLots}
-   <p class="mut" style="font-size:11px">Sales are matched to purchases first-in-first-out,
+   <p class="note">Sales are matched to purchases first-in-first-out,
     the same basis Indian equity tax uses. Holding shows the running share count after each
     trade.</p>`;
   $('#tclose').onclick=()=>$('#tlog').close();
+  $('#tlog').setAttribute('aria-labelledby','tltitle');
   $('#tlog').showModal();
 }
 
@@ -658,32 +959,34 @@ function holdings(){
     ['simple_return','Simple',''],['weight','Weight','c3'],['invested','Invested','c1'],
     ['proceeds','Sold','c4'],['market_value','Value',''],['dividends','Divs','c4'],
     ['net_profit','Net P/L',''],['days_held','Held','c5'],['n_flows','Flows','c5']];
-  const seg=(id,cur,opts)=>`<span class="seg" id="${id}">${opts.map(([k,l])=>
-    `<button data-v="${k}" aria-pressed="${k===cur}">${l}</button>`).join('')}</span>`;
-  $('#main').innerHTML=`<div class="card full"><h2>All holdings — click a header to sort</h2>
+  const seg=(id,cur,opts,label)=>`<span class="seg" id="${id}" role="group" aria-label="${label}">${opts.map(([k,l])=>
+    `<button type="button" data-v="${k}" aria-pressed="${k===cur}">${l}</button>`).join('')}</span>`;
+  $('#main').innerHTML=`<div class="card full"><h2>All holdings</h2>
    <div class="row">
-    <input id="hq" placeholder="Search name or ticker" value="${holdQ}" style="flex:1;min-width:150px">
-    ${seg('hstat',holdStatus,[['all','All'],['open','Held now'],['closed','Closed only']])}
-    ${seg('hasset',holdAsset,[['all','Everything'],['equity','Stocks'],['mf','Funds'],['other','Other']])}
-    <span class="mut" style="font-size:11px">${r.length} of ${all.length}</span>
+    <input id="hq" type="search" placeholder="Search name or ticker…" value="${esc(holdQ)}"
+      aria-label="Search holdings" autocomplete="off" spellcheck="false">
+    ${seg('hstat',holdStatus,[['all','All'],['open','Held now'],['closed','Closed only']],'Status')}
+    ${seg('hasset',holdAsset,[['all','Everything'],['equity','Stocks'],['mf','Funds'],['other','Other']],'Asset type')}
+    <span class="count" aria-live="polite">${r.length} of ${all.length}</span>
    </div>
    <div class="wrap"><table class="dense"><thead><tr>${cols.map(([k,l,cl])=>
-    `<th data-k="${k}" class="${cl}">${l}${sortKey===k?(sortDir<0?' ▾':' ▴'):''}${ih(k)}</th>`).join('')}</tr></thead>
-   <tbody>${r.map(x=>`<tr>
+    sortTh('k',k,l,sortKey,sortDir,{cls:cl+(k==='sector_label'?' txt':'')})).join('')}</tr></thead>
+   <tbody>${r.length?'':`<tr><td colspan="${cols.length}" class="empty"><b>No holdings match.</b>
+     Clear the search, or switch the filters back to All and Everything.</td></tr>`}${r.map(x=>`<tr>
      <td>${label(x)}${x.open?'':' <span class="chip">closed</span>'}${reChip(x)}${noCostChip(x)}</td>
-     <td class="mut c2">${x.sector_label}</td>
+     <td class="mut c2 txt">${x.sector_label}</td>
      <td>${xirrCell(x)}</td>
-     <td class="${sign(x.simple_return)}">${pct(x.simple_return,1)}</td>
+     <td class="${sign(x.simple_return)}">${spct(x.simple_return,1)}</td>
      <td class="c3">${pct(x.weight,1)}</td>
      <td class="c1">${usd(x.invested)}</td><td class="mut c4">${usd(x.proceeds)}</td>
      <td>${usd(x.market_value)}</td><td class="c4">${usd(x.dividends,2)}</td>
-     <td class="${sign(x.net_profit)}">${usd(x.net_profit)}</td>
+     <td class="${sign(x.net_profit)}">${susd(x.net_profit)}</td>
      <td class="mut c5">${heldCell(x)}</td><td class="mut c5">${x.n_flows>0
-       ?`<a href="#" class="flowlink" data-t="${encodeURIComponent(x.ticker)}"
-           title="Show every trade, with each sale matched to the buys it sold">${x.n_flows}</a>`
+       ?`<button type="button" class="flowlink" data-t="${encodeURIComponent(x.ticker)}"
+           data-tip="Show every trade, with each sale matched to the buys it sold">${x.n_flows}</button>`
        :x.n_flows}</td></tr>`).join('')}
    </tbody></table>
-   <p class="mut" style="font-size:11px;margin-top:8px">
+   <p class="note">
      <b class="chip re">no cost</b> arrived through a demerger, so nothing was paid for them
      here and Net P/L is the whole sale, not a return.
      <b class="chip re">re-entered</b> sold out completely and bought back in — XIRR is set
@@ -694,40 +997,42 @@ function holdings(){
      <b>~</b> means the share count is unreliable (a split left pre-split quantities in
      the order history) so the elapsed span is shown instead.</p>
    </div></div>`;
-  $('#main').querySelector('thead').onclick=e=>{const k=e.target.dataset.k; if(!k)return;
+  $('#main').querySelector('thead').onclick=e=>{const k=e.target.closest('[data-k]')?.dataset.k; if(!k)return;
     if(k===sortKey)sortDir*=-1; else{sortKey=k;sortDir=-1;}
-    setPref('sortKey',sortKey); setPref('sortDir',sortDir); holdings();};
+    setPref('sortKey',sortKey); setPref('sortDir',sortDir); holdings();
+    $('#main').querySelector(`thead [data-k="${k}"]`)?.focus();};
   $('#hq').oninput=e=>{holdQ=e.target.value; setPref('holdQ',holdQ); holdings();
     const i=$('#hq'); i.focus(); i.setSelectionRange(i.value.length,i.value.length);};
-  $('#hstat').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
-    holdStatus=v; setPref('holdStatus',v); holdings();};
-  $('#hasset').onclick=e=>{const v=e.target.dataset.v; if(!v)return;
-    holdAsset=v; setPref('holdAsset',v); holdings();};
+  $('#hstat').onclick=e=>{const v=e.target.closest('[data-v]')?.dataset.v; if(!v)return;
+    holdStatus=v; setPref('holdStatus',v); holdings(); $(`#hstat [data-v="${v}"]`)?.focus();};
+  $('#hasset').onclick=e=>{const v=e.target.closest('[data-v]')?.dataset.v; if(!v)return;
+    holdAsset=v; setPref('holdAsset',v); holdings(); $(`#hasset [data-v="${v}"]`)?.focus();};
   $('#main').onclick=e=>{const a=e.target.closest('.flowlink'); if(!a)return;
     e.preventDefault(); showTrades(decodeURIComponent(a.dataset.t));};
 }
 
 async function buys(){
-  $('#main').innerHTML='<div class="card">loading…</div>';
+  $('#main').innerHTML=skel(6);
   const days=STATE.buyDays||pref('buyDays',30);
   const [d,p]=await Promise.all([get('/api/daily-buys?days='+days+'&market='+STATE.market),get('/api/buy-program?days='+days+'&market='+STATE.market)]);
   $('#main').innerHTML=`
-  <div class="card"><h2>Recurring programme — last ${p.days} trading days</h2>
-   <p class="mut">${usd(p.total)} deployed · <b>${usd(p.per_day)}/day</b> across ${p.tickers.length} tickers</p>
-   <div class="wrap"><table><thead><tr><th>Ticker</th><th>Sector</th><th>Total</th>
-    <th>Buys</th><th>Per buy</th><th>Share of new $</th></tr></thead><tbody>
-    ${p.tickers.map(t=>`<tr><td><b>${t.ticker}</b></td><td class="mut">${t.sector_label}</td>
+  <div class="card"><h2>Recurring programme<small>Last ${p.days} trading days</small></h2>
+   <p class="mut" style="margin:-6px 0 12px">${usd(p.total)} deployed, <b style="color:var(--ink)">${usd(p.per_day)} a day</b> across ${p.tickers.length} tickers</p>
+   <div class="wrap"><table><thead><tr><th>Ticker</th><th class="txt">Sector</th><th>Total</th>
+    <th>Buys</th><th>Per buy</th><th>Share of new money</th></tr></thead><tbody>
+    ${p.tickers.map(t=>`<tr><td><b>${t.ticker}</b></td><td class="mut txt">${t.sector_label}</td>
      <td>${usd(t.amount)}</td><td>${t.n}</td><td>${usd(t.per_buy,2)}</td>
-     <td><div class="bar" style="display:inline-block;width:70px;vertical-align:middle">
+     <td><div class="bar" aria-hidden="true" style="display:inline-block;width:70px;vertical-align:middle;margin-right:8px">
       <i style="width:${t.share*100*4}%"></i></div> ${pct(t.share,1)}</td></tr>`).join('')}
    </tbody></table></div></div>
-  <div class="card"><h2>Day by day
-    <select id="dsel" style="float:right">${[7,14,30,60,90].map(n=>
-      `<option ${n===days?'selected':''}>${n}</option>`).join('')}</select></h2>
+  <div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px">
+    <h2 style="margin:0">Day by day</h2>
+    <select id="dsel" aria-label="Days shown">${[7,14,30,60,90].map(n=>
+      `<option value="${n}" ${n===days?'selected':''}>Last ${n} days</option>`).join('')}</select></div>
    ${d.map(x=>`<div class="day"><div class="h"><span>${x.date}</span>
-     <span>${usd(x.total,2)} · ${x.n} orders</span></div>
+     <span>${usd(x.total,2)} <span class="mut" style="font-weight:400">in ${x.n} orders</span></span></div>
      <div>${x.items.map(i=>`<span class="tick"><b>${i.ticker}</b> ${usd(i.amount,2)}</span>`).join('')}</div>
-   </div>`).join('')||'<p class="mut">No buys in range.</p>'}</div>`;
+   </div>`).join('')||`<p class="empty"><b>No buys in the last ${days} days.</b> Pick a longer window above.</p>`}</div>`;
   $('#dsel').onchange=e=>{STATE.buyDays=+e.target.value;setPref('buyDays',STATE.buyDays);buys();};
 }
 
@@ -735,9 +1040,9 @@ async function divs(){
   const d=await get('/api/dividends?market='+STATE.market);
   const mx=Math.max(...d.by_year.map(y=>y.amount));
   $('#main').innerHTML=`
-   <div class="card"><h2>Dividends — ${usd(d.total,2)} lifetime</h2>
+   <div class="card"><h2>Dividends<small>${usd(d.total,2)} lifetime</small></h2>
     <table><tbody>${d.by_year.map(y=>`<tr><td>${y.year}</td>
-      <td style="width:55%"><div class="bar"><i style="width:${y.amount/mx*100}%"></i></div></td>
+      <td style="width:55%"><div class="bar" aria-hidden="true"><i style="width:${y.amount/mx*100}%"></i></div></td>
       <td>${usd(y.amount,2)}</td><td class="mut">${y.n} payments</td></tr>`).join('')}</tbody></table></div>
    <div class="card"><h2>By ticker</h2><div class="wrap"><table>
     <thead><tr><th>Ticker</th><th>Received</th><th>Payments</th><th>Share</th></tr></thead><tbody>
@@ -829,19 +1134,19 @@ function contribCard(cn){
        months">Booked LT</th>
      <th>Booked P/L</th></tr></thead>
     <tbody>${cs.map(x=>`<tr><td>${x.label}</td>
-     <td style="width:34%"><div class="bar"><i style="width:${x.bought/cm*100}%"></i></div></td>
+     <td style="width:34%"><div class="bar" aria-hidden="true"><i style="width:${x.bought/cm*100}%"></i></div></td>
      <td>${usd(x.bought)}</td><td class="mut">${usd(x.sold)}</td>
      <td class="${sign(x.sold-x.bought)}">${usd(x.sold-x.bought)}</td>
-     <td class="${sign(x.realized_short)}">${x.realized_short?usd(x.realized_short):'—'}</td>
-     <td class="${sign(x.realized_long)}">${x.realized_long?usd(x.realized_long):'—'}</td>
-     <td class="${sign(x.realized)}">${x.realized?usd(x.realized):'—'}</td></tr>`).join('')}
+     <td class="${sign(x.realized_short)}">${x.realized_short?susd(x.realized_short):'—'}</td>
+     <td class="${sign(x.realized_long)}">${x.realized_long?susd(x.realized_long):'—'}</td>
+     <td class="${sign(x.realized)}">${x.realized?susd(x.realized):'—'}</td></tr>`).join('')}
     </tbody><tfoot><tr><th>Total</th><th></th>
      <th>${usd(tot.bought)}</th><th class="mut">${usd(tot.sold)}</th>
      <th class="${sign(tot.sold-tot.bought)}">${usd(tot.sold-tot.bought)}</th>
-     <th class="${sign(tot.realized_short)}">${usd(tot.realized_short)}</th>
-     <th class="${sign(tot.realized_long)}">${usd(tot.realized_long)}</th>
-     <th class="${sign(tot.realized)}">${usd(tot.realized)}</th></tr></tfoot></table></div>
-    <p class="mut" style="font-size:11px;margin-top:8px">
+     <th class="${sign(tot.realized_short)}">${susd(tot.realized_short)}</th>
+     <th class="${sign(tot.realized_long)}">${susd(tot.realized_long)}</th>
+     <th class="${sign(tot.realized)}">${susd(tot.realized)}</th></tr></tfoot></table></div>
+    <p class="note">
      <b>Net cash</b> is sold minus bought — negative means you put money in that period.
      <b>Booked ST</b> and <b>LT</b> split that by how long the shares were held — twelve
      months is the line for listed equity in both markets, and <b>not</b> the rule for debt
@@ -914,7 +1219,7 @@ async function fundMatrix(){
       return (typeof A==='string'?A.localeCompare(B):(A>B?1:A<B?-1:0))*fmDir;});
   const cell=(r,m)=>{
     const x=r.values[m.metric];
-    if(!x||x.v==null) return `<td class="miss">·</td>`;
+    if(!x||x.v==null) return `<td class="miss" aria-label="No data">—</td>`;
     const v=m.fmt==='%'?pct(x.v,1):m.fmt==='$'?usd(x.v):m.fmt==='x'?fmt(x.v,2)+'×'
       :m.fmt==='d'?fmt(x.v,0)+' d':fmt(x.v,2);
     return `<td title="as of ${x.asof||'—'}">${v}</td>`;
@@ -922,31 +1227,33 @@ async function fundMatrix(){
   const cats=[...new Set(d.rows.map(r=>r.sector_label))].sort();
   $('#fmbody').innerHTML=`
    <div class="row">
-    <input id="fmq" placeholder="Search name or ticker" value="${fmQ}" style="flex:1;min-width:150px">
-    <select id="fmsec">${['',...cats].map(v=>
+    <input id="fmq" type="search" placeholder="Search name or ticker…" value="${esc(fmQ)}"
+      aria-label="Search fundamentals" autocomplete="off" spellcheck="false">
+    <select id="fmsec" aria-label="Filter by category">${['',...cats].map(v=>
       `<option value="${v}"${v===fmSec?' selected':''}>${v||'All categories'}</option>`).join('')}</select>
-    <input id="fmadd" placeholder="Add ticker…" style="width:130px">
-    <span class="mut" style="font-size:11px">${rows.length} of ${d.rows.length}</span>
+    <input id="fmadd" placeholder="Add a ticker…" aria-label="Add a ticker you do not hold, then press Enter"
+      autocomplete="off" spellcheck="false" autocapitalize="characters" style="width:150px">
+    <span class="count">${rows.length} of ${d.rows.length}</span>
    </div>
-   ${fmExtra.length?`<p class="mut" style="font-size:11px">Added, not held:
-     ${fmExtra.map(t=>`<span class="tick">${t} <a href="#" class="fmdel" data-t="${t}">×</a></span>`).join('')}
+   ${fmExtra.length?`<p class="note" style="margin:0 0 10px">Added, not held:
+     ${fmExtra.map(t=>`<span class="tick">${esc(t)} <button type="button" class="fmdel flowlink" data-t="${esc(t)}" aria-label="Remove ${esc(t)}">×</button></span>`).join('')}
      — these show data only if a fundamentals sync has covered them.</p>`:''}
    <div class="wrap"><table class="dense"><thead><tr>
-     <th data-fk="ticker">Stock${fmKey==='ticker'?(fmDir<0?' ▾':' ▴'):''}</th>
-     <th data-fk="sector_label">Category${fmKey==='sector_label'?(fmDir<0?' ▾':' ▴'):''}</th>
-     <th data-fk="coverage">Cov${fmKey==='coverage'?(fmDir<0?' ▾':' ▴'):''}</th>
-     ${d.columns.map(m=>`<th data-fk="${m.metric}" title="${m.higher_better?'higher is better':'lower is better'} · ${m.n} stocks have it">`
-       +`${m.label}${fmKey===m.metric?(fmDir<0?' ▾':' ▴'):''}</th>`).join('')}
+     ${sortTh('fk','ticker','Stock',fmKey,fmDir)}
+     ${sortTh('fk','sector_label','Category',fmKey,fmDir,{cls:'txt'})}
+     ${sortTh('fk','coverage','Coverage',fmKey,fmDir,{tip:'Share of the metrics that apply to this sector which have data'})}
+     ${d.columns.map(m=>sortTh('fk',m.metric,m.label,fmKey,fmDir,
+       {tip:`${m.higher_better?'Higher':'Lower'} is better. ${m.n} stocks have it.`})).join('')}
    </tr></thead><tbody>${rows.map(r=>`<tr>
-     <td>${r.name?`<b class="fname" title="${r.ticker}">${r.name}</b>`:`<b>${r.ticker}</b>`}
+     <td>${r.name?`<b class="fname" data-tip="${esc(r.name)} (${esc(r.ticker)})">${esc(r.name)}</b>`:`<b>${esc(r.ticker)}</b>`}
          ${r.held?'':'<span class="chip">not held</span>'}</td>
-     <td class="mut">${r.sector_label}</td>
+     <td class="mut txt">${r.sector_label}</td>
      <td class="mut">${pct(r.coverage,0)}</td>
      ${d.columns.map(m=>cell(r,m)).join('')}</tr>`).join('')}
    </tbody></table></div>
-   <p class="mut" style="font-size:11px;margin-top:8px">Columns are ordered by how many
-    stocks carry them. A dot means the metric does not apply to that sector or has not been
-    synced — P/E is omitted for REITs and MLPs, P/B leads for banks. Hover a value for its
+   <p class="note">Columns are ordered by how many
+    stocks carry them. A dash means the metric does not apply to that sector or has not been
+    synced — P/E is omitted for REITs and MLPs, P/B leads for banks. Hover or tap a value for its
     as-of date.</p>`;
   $('#fmq').oninput=e=>{fmQ=e.target.value; setPref('fmQ',fmQ); fundMatrix().then(()=>{
     const i=$('#fmq'); i.focus(); i.setSelectionRange(i.value.length,i.value.length);});};
@@ -958,9 +1265,10 @@ async function fundMatrix(){
     fundMatrix();
   };
   $('#fmbody').querySelector('thead').onclick=e=>{
-    const k=e.target.closest('th')?.dataset.fk; if(!k)return;
+    const k=e.target.closest('[data-fk]')?.dataset.fk; if(!k)return;
     if(k===fmKey)fmDir*=-1; else{fmKey=k; fmDir=(k==='ticker'||k==='sector_label')?1:-1;}
-    setPref('fmKey',fmKey); setPref('fmDir',fmDir); fundMatrix();};
+    setPref('fmKey',fmKey); setPref('fmDir',fmDir);
+    fundMatrix().then(()=>$('#fmbody').querySelector(`thead [data-fk="${k}"]`)?.focus());};
   $('#fmbody').onclick=e=>{
     const a=e.target.closest('.fmdel'); if(!a)return;
     e.preventDefault(); fmExtra=fmExtra.filter(x=>x!==a.dataset.t);
@@ -969,12 +1277,13 @@ async function fundMatrix(){
 
 async function fund(){
   if(fundView==='matrix'){
-    $('#main').innerHTML=`<div class="card full"><h2>Fundamentals
-      <span class="seg" style="float:right" id="fview">
-        <button data-v="compare">Compare</button>
-        <button data-v="matrix" aria-pressed="true">All stocks</button></span></h2>
-      <div id="fmbody"></div></div>`;
-    $('#fview').onclick=e=>{const v=e.target.dataset.v; if(!v||v===fundView)return;
+    $('#main').innerHTML=`<div class="card full"><div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Fundamentals</h2>
+      <span class="seg" id="fview" role="group" aria-label="View">
+        <button type="button" data-v="compare" aria-pressed="false">Compare</button>
+        <button type="button" data-v="matrix" aria-pressed="true">All stocks</button></span></div>
+      <div id="fmbody">${skel(5).replace('class="card"','')}</div></div>`;
+    $('#fview').onclick=e=>{const v=e.target.closest('[data-v]')?.dataset.v; if(!v||v===fundView)return;
       fundView=v; setPref('fundView',v); fund();};
     return fundMatrix();
   }
@@ -1002,7 +1311,7 @@ async function fundCompare(){
     if(m.fmt==='%')return pct(m.value,1); if(m.fmt==='$')return usd(m.value);
     if(m.fmt==='x')return fmt(m.value,2)+'×'; if(m.fmt==='d')return fmt(m.value,0)+' d';
     return fmt(m.value,2);};
-  const sel=(id,val)=>`<select id="${id}">${(id==='tsel'?'':'<option value="">— none —</option>')
+  const sel=(id,val)=>`<select id="${id}" aria-label="${id==='tsel'?'First stock':id==='tsel2'?'Second stock':'Third stock'}">${(id==='tsel'?'':'<option value="">None</option>')
     +opts.map(t=>`<option ${t===val?'selected':''}>${t}</option>`).join('')}</select>`;
   const cmp=fs.length>1;
   // union of metrics, in the order the first ticker lists them, then any extras
@@ -1019,13 +1328,14 @@ async function fundCompare(){
     return vs.every(v=>v===vs[0])?null:vs.indexOf(t); };
 
   $('#main').innerHTML=`<div class="card">
-   <h2>Fundamentals
-    <span class="seg" style="float:right" id="fview">
-      <button data-v="compare" aria-pressed="true">Compare</button>
-      <button data-v="matrix">All stocks</button></span></h2>
+   <div class="row" style="justify-content:space-between">
+    <h2 style="margin:0">Fundamentals</h2>
+    <span class="seg" id="fview" role="group" aria-label="View">
+      <button type="button" data-v="compare" aria-pressed="true">Compare</button>
+      <button type="button" data-v="matrix" aria-pressed="false">All stocks</button></span></div>
    <div class="row"><span class="lbl">Compare</span>
      ${sel('tsel',tick)}${sel('tsel2',STATE.fundT2||'')}${sel('tsel3',STATE.fundT3||'')}
-     <span class="mut" style="font-size:11px">pick up to three</span></div>
+     <span class="count">Up to three</span></div>
    ${cmp?'':`<p class="mut"><b>${fs[0].ticker}</b>${fs[0].name?` — ${fs[0].name}`:''} ·
     ${fs[0].sector_label}. Metric set is chosen for this sector: P/E is omitted where it
     misleads (REITs, MLPs), P/B leads for banks, and ETFs show only fund-level figures.
@@ -1035,16 +1345,15 @@ async function fundCompare(){
        <div class="cname">${f.sector_label} · ${pct(f.coverage,0)} covered</div></th>`).join('')}
      <th>Direction</th></tr></thead><tbody>
     ${keys.map(k=>{const b=best(k); return `<tr><td>${label[k]}</td>
-     ${fs.map((f,i)=>`<td${b===i?' class="pos"':''}>${fmtv(at(f,k))}</td>`).join('')}
+     ${fs.map((f,i)=>`<td${b===i?' class="pos best"':''}>${fmtv(at(f,k))}${b===i?'<span class="sr"> (best)</span>':''}</td>`).join('')}
      <td class="mut">${dir[k]?'higher better':'lower better'}</td></tr>`;}).join('')}
    </tbody></table></div>
-   ${cmp?`<p class="mut" style="font-size:11px;margin-top:8px">Green marks the better
-     figure, and only where every ticker has one — comparing a metric across sectors that
+   ${cmp?`<p class="note">Green, bold figures are the better one in each row, and only where every ticker has one — comparing a metric across sectors that
      do not share it would be meaningless.</p>`:''}
    ${fs.some(f=>f.coverage<1)?`<p class="mut" style="margin-top:12px">Missing metrics need a
      fundamentals sync — see <b>Sync &amp; cost</b>.</p>`:''}</div>
    <div id="rep"></div>`;
-  $('#fview').onclick=e=>{const v=e.target.dataset.v; if(!v||v===fundView)return;
+  $('#fview').onclick=e=>{const v=e.target.closest('[data-v]')?.dataset.v; if(!v||v===fundView)return;
     fundView=v; setPref('fundView',v); fund();};
   $('#tsel').onchange=e=>{STATE.fundTicker=e.target.value;go('fund',e.target.value);};
   $('#tsel2').onchange=e=>{STATE.fundT2=e.target.value;setPref('fundT2',STATE.fundT2);fund();};
@@ -1057,11 +1366,11 @@ async function fundCompare(){
 async function syncv(){
   const k=STATE.pk||'daily';
   const META={
-    daily:{title:`Daily delta sync — ${MKT.flag} ${MKT.label}`,short:'daily',
+    daily:{title:`Daily delta sync — ${MKT.label}`,short:'daily',
       cadence:'run daily, after market close',
       desc:'Fetches orders, positions and quotes newer than what the database already holds. '+
            'Safe to run repeatedly — ingest dedupes on broker order id.'},
-    fundamentals:{title:`Fundamentals refresh — ${MKT.flag} ${MKT.label}`,
+    fundamentals:{title:`Fundamentals refresh — ${MKT.label}`,
       short:'fundamentals',cadence:'run weekly',
       desc:'Refreshes company metrics for every holding, using the metric set that matters for '+
            'each sector. Fills the “not loaded” rows on the Fundamentals tab.'}};
@@ -1073,7 +1382,7 @@ async function syncv(){
     Dollar figures below use placeholder rates in <code>pricing.json</code>. Confirm them at
     anthropic.com/pricing and set <code>"verified": true</code>.</div>`}
   <div class="card"><h2>Sync</h2>
-   <p class="mut">Prompts below are for <b>${MKT.flag} ${MKT.label}</b> — switch the market
+   <p class="mut">Prompts below are for <b>${MKT.label}</b> — switch the market
     at the top to get the other one. The broker MCP is reachable only from a Claude Code
     session, so the browser cannot fetch broker data directly. Copy this prompt into Claude Code — it writes JSON into
     <code>sync/inbox/</code> and ingests it. No data is copied by hand.</p>
@@ -1120,7 +1429,7 @@ async function syncv(){
     :`<div class="banner">Backups are not configured.<br>${(bk.error||'').replace(/[<>&]/g,
         ch=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch])).replace(/\n/g,'<br>')}</div>`}
   </div>
-  <div class="card"><h2>Token &amp; cost ledger — ${usd(co.total_cost,4)} billed to date</h2>
+  <div class="card"><h2>Token &amp; cost ledger<small>${usd(co.total_cost,4)} billed to date</small></h2>
    <table><tbody>${co.by_source.map(s=>`<tr><td>${s.source}</td>
      <td>${fmt(s.tokens)} tokens</td><td>${usd(s.cost,4)}</td>
      <td class="mut">${s.n} ops</td></tr>`).join('')||'<tr><td class="mut">no entries yet</td></tr>'}
@@ -1162,7 +1471,7 @@ async function syncv(){
 }
 
 async function research(){
-  $('#main').innerHTML='<div class="card">loading…</div>';
+  $('#main').innerHTML=skel(5);
   const d=await get('/api/analysis');
   const a=d.available, est=d.estimate;
   const held=STATE.ov.results.filter(r=>r.market_value>0&&r.sector!=='crypto'&&!['mf','sgb','bond'].includes(r.asset))
@@ -1178,14 +1487,15 @@ async function research(){
     and a risk panel — over one holding. <b>Third-party generated research, not a
     recommendation.</b> Trans neither endorses nor checks its conclusions.</p>
    ${a.ready?`
-     <div class="row"><span class="lbl">Ticker</span>
+     <div class="row"><label class="lbl" for="rsel">Ticker</label>
       <select id="rsel">${held.map(t=>`<option ${t===tick?'selected':''}>${t}</option>`).join('')}
         <option value="__other" ${STATE.otherTicker?'selected':''}>Other…</option></select>
-      <input id="rother" placeholder="e.g. RELIANCE.NS" value="${STATE.otherTicker||''}"
+      <input id="rother" placeholder="Symbol, e.g. RELIANCE.NS…" value="${esc(STATE.otherTicker||'')}"
+        aria-label="Any other symbol" autocomplete="off" spellcheck="false" autocapitalize="characters"
         style="width:150px;display:${STATE.otherTicker?'inline-block':'none'}">
       <button class="act ghost" id="rcheck"
         style="display:${STATE.otherTicker?'inline-block':'none'}">Check</button>
-      ${a.paid?`<span class="lbl">Reasoning model</span>
+      ${a.paid?`<label class="lbl" for="rmodel">Reasoning model</label>
         <select id="rmodel">${(est.models||[]).map(m=>
           `<option value="${m.id}" ${m.id===(STATE.researchModel||a.deep_think_llm)?'selected':''}
            >${m.label}</option>`).join('')}</select>`:''}
@@ -1489,7 +1799,7 @@ async function showReport(t,opt={}){
   window.__rep=r;   // for the copy buttons
   $('#rep').innerHTML=`<div class="card">
    <div class="rep-head">
-     <div><h2 style="margin:0">${t} — research report</h2>
+     <div><h2 style="margin:0">${t}<small>Research report</small></h2>
        <p class="mut" style="margin:6px 0 0">${(r.created_at||'').replace('T',' ').slice(0,19)}
         · <code>${(r.source||'').replace(/[<>&]/g,'')}</code> · ${r.sections.length} sections</p></div>
      <div><button class="act ghost" id="copyall">Copy whole report</button>
